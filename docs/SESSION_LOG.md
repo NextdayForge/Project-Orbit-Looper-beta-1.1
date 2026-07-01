@@ -29,3 +29,5 @@
 - **Task Proposal Engine の続き:** `TaskProposalService`（`coach/CoachService.ts` を手本に Gemini+local Facade）の実装から着手。CLAUDE.md の「現在の作業」セクションに詳細パイプラインあり。
 - **未調査:** ユーザー報告の「どのタスクを登録しても90分に設定され2つに分割される」現象。`intelligence/planner/` の配置(Placement)ロジック側の可能性が高い。再現条件の確認から。
 - 次回セッション開始時は `git pull` してから作業すること（他デバイスでの変更が反映されている可能性）。
+
+他デバイスからの動作確認テスト
