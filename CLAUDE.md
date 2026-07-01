@@ -111,3 +111,13 @@ buildProposalContext()          ✅ 完成（proposalContext.ts）
 - `candidatePoolBuilder.ts` の `remainingMinutes` は現状 `task.estimatedMinutes` そのまま（部分完了タスクの残り時間を反映していない）。DTO 名と実挙動に差がある。
 - `scoringEngine.ts` で今日締切は `deadline_today (40) + deadline_within_24h (25) = 65` と二重加点になる。意図的だが将来調整の余地。
 - Inbox の未配置タスクが候補プールに入らないケースがある（`resolveMorningReplanTaskIds` 由来）。
+
+---
+
+## マルチデバイス運用（複数端末で Claude Code を使う）
+
+このプロジェクトは複数デバイスから作業する。会話メモリはマシンローカルで同期されないため、**コードは git、文脈は `docs/SESSION_LOG.md`** で引き継ぐ。
+
+- **セッション開始時:** [`docs/SESSION_LOG.md`](docs/SESSION_LOG.md) の最新エントリを読み、前回の状態・次にやることを把握する。作業前に `git pull` して最新化する。
+- **セッション終了時（意味のある変更を行った後）:** `docs/SESSION_LOG.md` に日付付きで新しいエントリを追記し（変更内容・意思決定・次回への申し送り）、コミットして **確認なしで `git push` してよい**（2026-07-01 にユーザーが承認済み）。
+- 単発の質問や調査だけで終わったセッション（コード変更なし）はログ追記不要。
