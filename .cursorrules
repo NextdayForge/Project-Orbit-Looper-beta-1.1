@@ -1,0 +1,194 @@
+Project Orbit Architecture v1.0 (MVP Foundation)
+Mission
+Project Orbit は「AIスケジュールアプリ」ではない。
+Project Orbit は
+"毎日ユーザーを理解し、最適な1日を生成し続ける Life OS"
+である。
+設計原則
+Principle 1
+Task と Session は分離する。
+Task は「やること」。
+Session は「いつ実行するか」。
+Task は不変。
+Session は毎日変わる。
+Principle 2
+AI は Session を変更する。
+Task は勝手に変更しない。
+これによりユーザーの意図を失わない。
+Principle 3
+すべての学習は UserModel に集約される。
+Session
+↓
+Outcome
+↓
+Reflection
+↓
+UserModel
+↓
+Tomorrow's Plan
+Principle 4
+Explainable AI
+AI の判断には必ず理由を持たせる。
+例
+Today = PUSH
+Reasons
+Deadline is close
+Morning energy is high
+Yesterday completion rate was high
+ユーザーは
+「なぜこの予定なのか」
+を常に確認できる。
+MVP Domain
+Project Orbit v1 は次の6つだけで構成する。
+Task
+Session
+CalendarBlock
+Reflection
+UserModel
+DecisionLog
+それ以外は実装しない。
+UserModel v1
+MVPでは以下のみ保持する。
+Procrastination Index
+0〜1
+先延ばし傾向
+Energy Curve
+24時間配列
+どの時間帯で成功しやすいか
+Focus Length
+平均集中時間
+例
+42分
+Estimation Factor
+カテゴリ別
+Study
+1.35
+30分見積
+↓
+40分配置
+Buffer Need
+平均必要バッファ時間
+5〜15分
+Reflection v1
+抽出する情報
+Mood
+Energy
+Wins
+Blockers
+以上のみ。
+自由記述から Gemini が特徴量へ変換する。
+複雑な心理分析は行わない。
+DayType
+MVPでは4種類のみ。
+REST
+LIGHT
+NORMAL
+PUSH
+SPRINTは実装しない。
+Intelligence Loop
+Morning
+↓
+DayType 判定
+↓
+Task Selection
+↓
+Session Placement
+↓
+Execution
+↓
+Outcome
+↓
+Reflection
+↓
+UserModel Update
+↓
+Tomorrow
+DecisionLog
+Orbit独自機能
+AIが意思決定した理由を保存する。
+DecisionLog
+id
+timestamp
+taskId
+sessionId
+score
+reasonTags[]
+candidateSlots[]
+chosenSlot
+これにより
+・Explainability
+・デバッグ
+・学習
+を実現する。
+SessionOutcome
+Session終了時に必ず分類する。
+SUCCESS
+OVERRUN
+PARTIAL
+SKIPPED
+RESCHEDULED
+LATE_START
+これがUserModel更新の唯一の入力になる。
+学習ループ
+Session
+↓
+Outcome
+↓
+Reflection
+↓
+DailyFeatures
+↓
+UserModel
+↓
+Planner
+PlannerはUserModelだけを見る。
+Rawデータを直接読まない。
+MVPでは実装しないもの
+Sleep Model
+Exercise Model
+HealthKit
+Google Fit
+Global Priors
+Cloud Batch
+Weekly Review
+Monthly Review
+Goal Tree
+Milestone
+Project AI
+Habit AI
+100万人スケール設計
+Federated Learning
+これらは Architecture v2 以降に延期する。
+Sprint Roadmap
+Sprint 1
+Domain Migration
+(Task / Session / CalendarBlock)
+Sprint 2
+Reflection
+SessionOutcome
+DecisionLog
+Sprint 3
+UserModel
+Energy Curve
+PI
+Estimation Learning
+Sprint 4
+DayType
+Morning Planner
+Explainability
+Sprint 5
+Orbit Intelligence Engine v1
+完全ローカル学習
+Geminiは
+Morning Brief
+Reflection Extraction
+のみ利用する。
+Ultimate Goal
+競合は
+「予定を作る」
+Project Orbit は
+「ユーザーを理解する」
+毎日少しずつユーザーを学習し、
+昨日より賢く、
+来週よりさらに賢くなる。
+これが Orbit のコア価値である。

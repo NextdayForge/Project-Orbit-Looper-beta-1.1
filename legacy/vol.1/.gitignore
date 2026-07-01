@@ -1,0 +1,13 @@
+node_modules
+.expo
+dist
+dist-test
+.vercel
+web-build
+.env
+.env.local
+*.local
+
+# Legacy Vite (optional web)
+vite.config.ts
+tsconfig.node.json

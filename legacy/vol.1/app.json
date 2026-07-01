@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Calendar",
+    "slug": "my-calendar-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#F2F2F7"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mycalendar.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#F2F2F7"
+      },
+      "package": "com.mycalendar.app"
+    },
+    "plugins": ["expo-asset"]
+  }
+}

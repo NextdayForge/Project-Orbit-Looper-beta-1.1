@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "Orbit Looper",
+    "slug": "orbit-looper",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/orbit-splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F2F3F5"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.orbitlooper.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSUserNotificationsUsageDescription": "次のセッション開始の数分前にお知らせします。"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#F2F3F5"
+      },
+      "package": "com.orbitlooper.app",
+      "versionCode": 1,
+      "softwareKeyboardLayoutMode": "resize"
+    },
+    "plugins": [
+      "expo-asset",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-notifications",
+        {
+          "sounds": []
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "d9175b78-80f7-412e-a725-7126d2efb1e6"
+      }
+    },
+    "owner": "asuforge"
+  }
+}

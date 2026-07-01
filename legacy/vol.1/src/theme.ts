@@ -1,0 +1,21 @@
+export const theme = {
+  bg: '#F2F2F7',
+  elevated: '#FFFFFF',
+  secondary: '#E5E5EA',
+  text: '#1C1C1E',
+  textSecondary: '#8E8E93',
+  textTertiary: '#AEAEB2',
+  accent: '#007AFF',
+  accentSoft: 'rgba(0,122,255,0.12)',
+  destructive: '#FF3B30',
+  separator: 'rgba(60,60,67,0.12)',
+  shadow: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  radius: { sm: 10, md: 14, lg: 20 },
+  navHeight: 72,
+};

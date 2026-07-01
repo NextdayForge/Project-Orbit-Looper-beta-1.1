@@ -1,0 +1,13 @@
+{
+  "name": "looper-gemini-proxy",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250204.0",
+    "typescript": "^5.9.0",
+    "wrangler": "^3.109.0"
+  }
+}
