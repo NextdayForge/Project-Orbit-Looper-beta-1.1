@@ -9,7 +9,7 @@ import { CapacityPlan, PlacementOptions, PlacementResult } from './types';
  * Thin wrapper over PlacementStrategy.
  * PlacementEngine must not call legacy schedulers directly.
  *
- * Default: LocalPlacementStrategy only (.cursorrules Sprint 5 — Gemini is not used for placement).
+ * Default: LocalPlacementStrategy only (ローカルファースト原則 — Gemini is not used for placement).
  * Override: new PlacementEngine(new GeminiPlacementStrategy()) for experiments.
  */
 export class PlacementEngine {
