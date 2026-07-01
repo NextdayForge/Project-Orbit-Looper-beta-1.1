@@ -1,19 +1,33 @@
 # Session Log
 
-複数デバイスで Claude Code を使うための引き継ぎログ。**新しいエントリは先頭に追加**（降順）。
-運用ルールは [CLAUDE.md](../CLAUDE.md) の「マルチデバイス運用」を参照。
+複数デバイスで Claude Code を使うための引き継ぎログ。**新しいエントリは先頭に追加**（降順）。同日中の続きの作業はその日のエントリに追記する。
+運用ルールとログの書き方は [CLAUDE.md](../CLAUDE.md) の「マルチデバイス運用」を参照。
 
 ---
 
 ## 2026-07-01
 
-### 変更内容
-- git 未初期化・`node_modules` 未導入だった状態を解消（`git init` → `npm install`）。
-- ESLint が実質壊れていた問題を修正: `package.json` は `eslint@^9`（flat config 必須）を指定していたが設定は旧 `.eslintrc.js` のままで `npm run lint` がエラー即死していた。`eslint.config.js`（flat config, `eslint-config-expo/flat` 使用）に移行し、旧 `.eslintrc.js` は削除。
-- `tsc --noEmit` の型エラーを修正: `src/__tests__/scoringEngine.test.ts` の `scoreFor(taskOverrides, sessions = [])` で `sessions` に型注釈がなく `never[]` に推論されていた。`Session[]` を明示。
-- `.cursorrules`（設計原則）と ChatGPT との対話履歴（Task Proposal Engine の設計議論）を統合し、`CLAUDE.md` を新規作成。
-- GitHub リモート `https://github.com/NextdayForge/Project-Orbit-Looper-beta-1.1.git` を接続。リモートに既存の初回コミット（`ed4576f`）があったため、そちらを土台として維持し、上記の修正一式を追加コミット（`c1b03db`）として積んで push（fast-forward、force 不要）。
-- マルチデバイス運用のため本ログファイルを新設。以後、意味のある変更を行ったセッションの終了時に追記し、確認なしで push する運用をユーザーが承認。
+### 経緯・何が起きたか
+
+ユーザーは今まで ChatGPT（設計・議論）と Cursor（実装）を横断して Orbit Looper を開発してきたが、二つのツールをまたぐと精度が落れると判断し、Claude Code 一本に移行することにした。まず ChatGPT との対話履歴（Task Proposal Engine の設計議論、ChatGPT 自身は進捗を約40〜70%と評価していた）と実際のコードを突き合わせて評価するよう依頼された。
+
+実コードを読んだ結果、ChatGPT の評価は誇張ではなく概ね正確だったと判断した。`intelligence/taskProposal/`（ProposalContext → CandidatePool → ScoringEngine → ProposalSelector）は責務分離・DTO設計・Explainable AI（`reasons[]`）の土台がきちんと実装されていた。ただし ChatGPT が「部分完了タスクに対応できる」と評価していた `candidatePoolBuilder.ts` の `remainingMinutes` は、実際には `task.estimatedMinutes` をそのまま使っているだけで、評価が実装を先取りしていた箇所だと判明した（CLAUDE.md の「既知の小課題」に記録済み）。
+
+コード評価と並行して、環境そのものに看過できない問題が2つ見つかった。1つは **git 管理下になかったこと**（`git status` が "not a git repository" を返した）、もう1つは **`node_modules` が未インストールだったこと**。これを「今すぐやるべきこと」としてユーザーに提案し、了承を得て実行した。
+
+`git init` → `npm install` の後、ベースライン確認のため `tsc --noEmit` / `npm test` / `npm run lint` を回したところ、さらに実害のあるバグを2つ発見した。
+- `package.json` は ESLint 9（flat config 必須）を指定しているのに設定ファイルは旧 `.eslintrc.js` のままで、`npm run lint` が起動時にエラーで即死していた。`eslint-config-expo/flat` を使った `eslint.config.js` に移行し、旧ファイルを削除して解消。
+- `src/__tests__/scoringEngine.test.ts` の `scoreFor(taskOverrides, sessions = [])` で、デフォルト引数 `[]` に型注釈がなく TypeScript が `never[]` と推論し、`tsc --noEmit` が2件のエラーで失敗していた（テスト自体は ts-jest の `isolatedModules: true` により実行時は素通りしていたため、これまで気づかれていなかった）。`Session[]` と明示して解消。
+
+その後、GitHub リポジトリ（`https://github.com/NextdayForge/Project-Orbit-Looper-beta-1.1.git`）を教えてもらい `git remote add` で接続したところ、**リモート側に既に初回コミット（`ed4576f`）が存在していた**ことが判明した（ローカルの初回コミットとは無関係な履歴、共通の親を持たない）。両者を diff した結果、差分は上記の修正5ファイルのみでほぼ同一内容だったため、無理に履歴統合や force push はせず、**リモートの既存コミットを土台として維持し、修正一式を2つ目のコミット（`c1b03db`）として積む**方式で解決した（fast-forward push で成功、ローカルの一時ブランチは削除）。
+
+一区切りついたところで、ユーザーから「複数デバイスで Claude Code を使いたいので、セッション終了時に対話内容・変更内容を次回に引き継げるようにしたい」という要望が出た。会話メモリはマシンローカルで同期されない旨を説明し、コードは git、文脈は git 管理下のログファイルで引き継ぐ方針を提案・了承を得た。合わせて「セッション終了時、確認なしで push してよいか」を確認したところ、**自動 push を承認**された（この承認はCLAUDE.mdに明記し、以後のセッションでも有効）。これを機に本ログファイルを新設し、CLAUDE.md に運用ルールを追記した（コミット `7afc276`）。
+
+続けて、新しいデバイスで初めてこのプロジェクトを扱う際にそのまま貼れる「初回セットアップ用プロンプト」の作成を依頼され、CLAUDE.md に追記（コミット `bceed97`）。その際「クローン先はどこになるのか」という質問が出たため、`git clone` はカレントディレクトリ直下に作られるだけで固定の配置場所はないことを説明した。このマシンでは `C:\Users\ayosh\` 直下に配置されていたため、**どのデバイスでもユーザーのホームディレクトリ直下に統一する**ようプロンプトを修正した（コミット `a302dae`）。
+
+さらに「2回目以降のセッションでは何かした方がいいか」と聞かれ、`git pull` →（`package-lock.json` が変化していれば）`npm install` → `SESSION_LOG.md` 確認、という一連の流れを**ユーザーの指示を待たずセッション開始時に自動で行う**よう CLAUDE.md を強化した（コミット `37badd3`）。
+
+最後に「対話型AIのように、以前の会話を踏まえて別デバイスでも会話を続けたい」という要望が出た。これは技術的な誤解を含んでいたため訂正した: claude.ai のようなアカウント同期型チャットと、Claude Code（プロジェクト/マシン単位でセッションが動く開発ツール）は別物であり、生の会話履歴はマシンローカルにしか残らない。完全な会話継続(生ログの同期)は実現できないと説明したうえで、代替案を2つ提示した。(a) 別デバイスで実際にセッション一覧を見せてもらい、このハーネス固有の `ccd_session_mgmt` ツールがアカウント単位でセッションを保持しているか確認する、(b) `SESSION_LOG.md` を単なる箇条書きではなく、物語的で詳細な要約に強化する。ユーザーは **(b) を選択**。本エントリ自体がその新方式の最初の実例であり、CLAUDE.md のログ運用ルールもこの方式（経緯・理由・決定事項・保留事項・申し送りを物語的に書く)に更新した。
 
 ### 現状のベースライン
 - 型チェック: 0 エラー
@@ -21,11 +35,15 @@
 - Lint: 0 エラー / 26 警告（既存の軽微な `no-unused-vars` 等、未対応のまま）
 - git: `main` ブランチ、`origin/main` と同期済み
 
-### 評価（ChatGPT 対話履歴 + 実コードの精査）
-- `intelligence/taskProposal/`（ProposalContext → CandidatePool → ScoringEngine → ProposalSelector）は対話履歴の評価どおり高品質。責務分離・DTO設計・Explainable AI（`reasons[]`）の土台は実装済みで、ChatGPT の称賛はお世辞ではなかった。
-- ただし ChatGPT の評価は実装を先取りしている箇所があった: `candidatePoolBuilder.ts` の `remainingMinutes` は「部分完了タスクに対応」と評価されていたが、実際は `task.estimatedMinutes` そのままで残り時間計算はまだ未実装（CLAUDE.md の「既知の小課題」に記録済み）。
+### 決定事項
+- セッション終了時の `git push` は確認なしで実行してよい（ユーザー承認済み、CLAUDE.md に明記）。
+- プロジェクトは全デバイスでユーザーのホームディレクトリ直下に配置する方針。
+- 完全な会話継続（生ログ同期）はできない前提で、本ログを「物語的な詳細要約」として運用する方針にシフト（本エントリから適用）。
+
+### 保留事項
+- `ccd_session_mgmt` のセッション一覧・検索ツールが、実際に複数の物理デバイスをまたいでセッションを保持するのかは未検証（今回はこのマシン上でしか確認していない）。もし別デバイスで確認する機会があれば、本項目を更新すること。
 
 ### 次回への申し送り
-- **Task Proposal Engine の続き:** `TaskProposalService`（`coach/CoachService.ts` を手本に Gemini+local Facade）の実装から着手。CLAUDE.md の「現在の作業」セクションに詳細パイプラインあり。
+- **Task Proposal Engine の続き:** `TaskProposalService`(`coach/CoachService.ts` を手本に Gemini+local Facade)の実装から着手。CLAUDE.md の「現在の作業」セクションに詳細パイプラインあり。
 - **未調査:** ユーザー報告の「どのタスクを登録しても90分に設定され2つに分割される」現象。`intelligence/planner/` の配置(Placement)ロジック側の可能性が高い。再現条件の確認から。
-- 次回セッション開始時は `git pull` してから作業すること（他デバイスでの変更が反映されている可能性）。
+- 次回セッション開始時は CLAUDE.md の「セッション開始時」手順(git pull → 条件付き npm install → 本ログ確認)を自動で行うこと。
