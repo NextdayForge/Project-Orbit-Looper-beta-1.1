@@ -8,6 +8,7 @@ web-build
 .env
 .env.local
 *.local
+.claude/settings.local.json
 
 # Legacy Vite (optional web)
 vite.config.ts

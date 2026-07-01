@@ -3,6 +3,7 @@ import { assembleProposalContext } from '../intelligence/taskProposal/proposalCo
 import { scoreCandidate, SCORE_BY_REASON } from '../intelligence/taskProposal/scoringEngine';
 import { CandidateTask, ProposalContext } from '../intelligence/taskProposal/types';
 import { DEFAULT_SETTINGS } from '../types/schedule';
+import { Session } from '../types/session';
 import { createDefaultUserModel } from '../types/userModel';
 import { parseDateKey } from '../utils/time';
 import { makeSession, makeTask } from './fixtures';
@@ -11,7 +12,7 @@ describe('scoreCandidate', () => {
   const dateKey = '2026-06-30';
   const now = new Date(2026, 5, 30, 10, 0);
 
-  function scoreFor(taskOverrides: Parameters<typeof makeTask>[0], sessions = []) {
+  function scoreFor(taskOverrides: Parameters<typeof makeTask>[0], sessions: Session[] = []) {
     const task = makeTask(taskOverrides);
     const context = assembleProposalContext({
       dateKey,
