@@ -127,9 +127,11 @@ buildProposalContext()          ✅ 完成（proposalContext.ts）
 ```
 このプロジェクト（Orbit Looper）を初めてこのデバイスで扱います。次を実行してください。
 
-1. カレントディレクトリに Project-Orbit-Looper-beta-1.1 がまだクローンされていなければ、
-   https://github.com/NextdayForge/Project-Orbit-Looper-beta-1.1.git をクローンして
-   そのディレクトリに移動する。既にクローン済みでその中で起動している場合はそのまま使う。
+1. ユーザーのホームディレクトリ直下（Windowsなら C:\Users\<name>\、Mac/Linuxなら ~/）に
+   Project-Orbit-Looper-beta-1.1 がまだクローンされていなければ、ホームディレクトリに
+   移動してから https://github.com/NextdayForge/Project-Orbit-Looper-beta-1.1.git を
+   クローンし、そのディレクトリに移動する。他の場所（Desktop等）に置かない。
+   既にホームディレクトリ直下にクローン済みでその中で起動している場合はそのまま使う。
 2. npm install を実行する。
 3. npx tsc --noEmit / npm test / npm run lint を実行し、CLAUDE.md に記載のベースライン
   （型チェック0エラー・テスト全件成功・lint 0エラー）と一致するか確認する。差分があれば報告する。
