@@ -2,7 +2,7 @@ import { AiTaskInput } from '../../types/schedule';
 
 import { Session } from '../../types/session';
 
-import { Task, TaskStatus } from '../../types/task';
+import { Task, TaskCategory, TaskStatus } from '../../types/task';
 
 import { normalizeTaskTitle } from '../../utils/taskTitle';
 
@@ -122,7 +122,11 @@ export async function resolveAiTaskInputs(
   let reused = 0;
 
   const knownTasks = [...existingTasks];
-  const pendingInputs: Array<{ title: string; priority: typeof inputs[0]['priority'] }> = [];
+  const pendingInputs: Array<{
+    title: string;
+    priority: typeof inputs[0]['priority'];
+    estimatedMinutes?: number;
+  }> = [];
 
   for (const input of inputs) {
     const normalizedTitle = normalizeTaskTitle(input.title);
@@ -142,11 +146,19 @@ export async function resolveAiTaskInputs(
       continue;
     }
 
-    pendingInputs.push({ title: normalizedTitle, priority: input.priority });
+    pendingInputs.push({
+      title: normalizedTitle,
+      priority: input.priority,
+      estimatedMinutes: input.estimatedMinutes,
+    });
   }
 
+  // User-specified durations bypass estimation entirely — never overwritten by AI/keyword guesses.
+  const inputsNeedingEstimate = pendingInputs.filter(
+    (item) => !(item.estimatedMinutes && item.estimatedMinutes > 0)
+  );
   const estimates = await taskDurationEstimator.estimateBatch(
-    pendingInputs.map((item) => ({
+    inputsNeedingEstimate.map((item) => ({
       title: item.title,
       defaultMinutes: defaultEstimatedMinutes,
     }))
@@ -154,11 +166,16 @@ export async function resolveAiTaskInputs(
   const userModel = await userModelRepository.get();
 
   for (const item of pendingInputs) {
-    const estimate = estimates.get(item.title) ?? {
-      estimatedMinutes: defaultEstimatedMinutes,
-      category: 'general' as const,
-      source: 'local' as const,
-    };
+    const userSpecifiedMinutes =
+      item.estimatedMinutes && item.estimatedMinutes > 0 ? item.estimatedMinutes : null;
+
+    const estimate: { estimatedMinutes: number; category: TaskCategory } =
+      userSpecifiedMinutes != null
+        ? { estimatedMinutes: userSpecifiedMinutes, category: 'general' }
+        : estimates.get(item.title) ?? {
+            estimatedMinutes: defaultEstimatedMinutes,
+            category: 'general',
+          };
     const scaledMinutes = scaleMinutesForEstimation(
       estimate.estimatedMinutes,
       estimate.category,

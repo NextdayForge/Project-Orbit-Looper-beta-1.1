@@ -31,7 +31,12 @@ export type CalendarMode = 'month' | 'day';
 export interface AiTaskInput {
   title: string;
   priority: TaskPriority;
+  /** User-specified duration; when present, takes priority over AI/keyword estimation. */
+  estimatedMinutes?: number;
 }
+
+/** Duration choices offered in task input UI (AiScheduleModal detail cards, bulk "30分" parsing). */
+export const TASK_DURATION_OPTIONS = [15, 30, 45, 60, 90, 120] as const;
 
 export interface AppSettings {
   pxPerMinute: number;

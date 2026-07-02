@@ -15,7 +15,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AiTaskInput, PRIORITY_SHORT, TaskPriority } from '../types/schedule';
+import { AiTaskInput, PRIORITY_SHORT, TASK_DURATION_OPTIONS, TaskPriority } from '../types/schedule';
+import { parseBulkLines } from '../presentation/calendar/bulkTaskInput';
 import { formatDateHeader } from '../utils/time';
 import { BottomSheetDragHandle } from './common/BottomSheetDragHandle';
 import { useBottomSheetDismiss } from './common/useBottomSheetDismiss';
@@ -26,6 +27,8 @@ interface TaskDraft {
   title: string;
   priority: TaskPriority;
   showPriority: boolean;
+  estimatedMinutes?: number;
+  showDuration: boolean;
 }
 
 interface AiScheduleModalProps {
@@ -39,23 +42,13 @@ interface AiScheduleModalProps {
 const PRIORITIES: TaskPriority[] = [1, 2, 3, 4, 5];
 
 function emptyTask(): TaskDraft {
-  return { id: `draft-${Date.now()}-${Math.random()}`, title: '', priority: 3, showPriority: false };
-}
-
-function parseBulkLines(text: string): AiTaskInput[] {
-  const seen = new Set<string>();
-  const tasks: AiTaskInput[] = [];
-
-  for (const line of text.split('\n')) {
-    const title = line.trim();
-    if (!title || seen.has(title)) {
-      continue;
-    }
-    seen.add(title);
-    tasks.push({ title, priority: 3 });
-  }
-
-  return tasks;
+  return {
+    id: `draft-${Date.now()}-${Math.random()}`,
+    title: '',
+    priority: 3,
+    showPriority: false,
+    showDuration: false,
+  };
 }
 
 export function AiScheduleModal({
@@ -96,7 +89,11 @@ export function AiScheduleModal({
     }
 
     return tasks
-      .map((task) => ({ title: task.title.trim(), priority: task.priority }))
+      .map((task) => ({
+        title: task.title.trim(),
+        priority: task.priority,
+        ...(task.estimatedMinutes ? { estimatedMinutes: task.estimatedMinutes } : {}),
+      }))
       .filter((task) => task.title.length > 0);
   }, [bulkText, tasks]);
 
@@ -136,7 +133,7 @@ export function AiScheduleModal({
                 <Text style={styles.title}>AIスケジュール作成</Text>
                 <Text style={styles.date}>{formatDateHeader(targetDate)}</Text>
                 <Text style={styles.desc}>
-                  1行に1タスクで入力すると早いです。AIが所要時間を推定して空き時間に配置します。
+                  1行に1タスクで入力すると早いです。末尾に「30分」のように書くと所要時間を指定できます（未指定はAIが推定します）。
                 </Text>
               </BottomSheetDragHandle>
 
@@ -149,7 +146,7 @@ export function AiScheduleModal({
               <Text style={styles.sectionLabel}>タスクを入力</Text>
               <TextInput
                 style={styles.bulkInput}
-                placeholder={'例:\n英語の過去問\nプログラミング課題\n買い物'}
+                placeholder={'例:\n英語の過去問 30分\nプログラミング課題\n買い物'}
                 placeholderTextColor={theme.textTertiary}
                 value={bulkText}
                 onChangeText={setBulkText}
@@ -216,6 +213,55 @@ export function AiScheduleModal({
                               ]}
                             >
                               {PRIORITY_SHORT[p]}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
+                    <TouchableOpacity
+                      onPress={() => updateTask(task.id, { showDuration: !task.showDuration })}
+                      disabled={isLoading}
+                    >
+                      <Text style={styles.priorityToggle}>
+                        {task.showDuration ? '所要時間を隠す' : 'どれくらいかかりそう？'}
+                      </Text>
+                    </TouchableOpacity>
+                    {task.showDuration && (
+                      <View style={styles.durationRow}>
+                        <TouchableOpacity
+                          style={[
+                            styles.durationBtn,
+                            task.estimatedMinutes == null && styles.durationBtnActive,
+                          ]}
+                          onPress={() => updateTask(task.id, { estimatedMinutes: undefined })}
+                          disabled={isLoading}
+                        >
+                          <Text
+                            style={[
+                              styles.durationBtnText,
+                              task.estimatedMinutes == null && styles.durationBtnTextActive,
+                            ]}
+                          >
+                            おまかせ
+                          </Text>
+                        </TouchableOpacity>
+                        {TASK_DURATION_OPTIONS.map((minutes) => (
+                          <TouchableOpacity
+                            key={minutes}
+                            style={[
+                              styles.durationBtn,
+                              task.estimatedMinutes === minutes && styles.durationBtnActive,
+                            ]}
+                            onPress={() => updateTask(task.id, { estimatedMinutes: minutes })}
+                            disabled={isLoading}
+                          >
+                            <Text
+                              style={[
+                                styles.durationBtnText,
+                                task.estimatedMinutes === minutes && styles.durationBtnTextActive,
+                              ]}
+                            >
+                              {minutes}分
                             </Text>
                           </TouchableOpacity>
                         ))}
@@ -331,6 +377,16 @@ const makeStyles = (theme: Theme) =>
     priorityBtnActive: { backgroundColor: theme.accent },
     priorityBtnText: { fontSize: 11, fontWeight: '700', color: theme.textSecondary },
     priorityBtnTextActive: { color: theme.onAccent },
+    durationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+    durationBtn: {
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: 6,
+      backgroundColor: theme.elevated,
+    },
+    durationBtnActive: { backgroundColor: theme.accent },
+    durationBtnText: { fontSize: 12, fontWeight: '700', color: theme.textSecondary },
+    durationBtnTextActive: { color: theme.onAccent },
     addBtn: {
       borderWidth: 1,
       borderColor: theme.separator,
