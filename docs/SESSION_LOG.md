@@ -72,10 +72,23 @@ claude.aiの分析はさらに、検証可能な3ヶ月の北極星（「2週間
 - 実行フィデリティの穴のうち、`OutcomeDeriver.ts`のタイマー未使用フォールバックと`DailyFeatureExtractor.ts`/`UserModelUpdater.ts`の欠測日誤学習（procrastinationIndex）の2点を修正。「開始→集中→完了をアプリ内で必ず通す動線の強化」（UI側の対応）は今回のスコープ外のまま持ち越し。
 - `completionRate`はマニュアル完了も含めて計算する既存挙動を維持する（今回の目的は「マニュアル完了を完璧な時間実績として学習しないこと」であり、完了自体をカウントしないことではない）。
 
+### 続報2（同日中の作業・UI影響調査）
+
+前段の`timerUsed`/`timedOutcomes`対応により、「タイマー実績がない日やマニュアル完了のみの日に`averageFocusScore`が0点としてUI表示され、ユーザーに誤解を与えるのでは」という懸念をユーザーから指摘され、コード変更前にUI側の実際の表示箇所を調査した。
+
+`averageFocusScore`（`DailyFeatures`由来）と`PlannerEvaluationResult.averageFocusScore`（`PlannerEvaluationService`由来、こちらは別計算で`timerUsed`によるフィルタ対象外）の両方について、`src`配下の`.tsx`ファイルを網羅的に検索した結果、**現在のアプリには`averageFocusScore`（focusScore）を直接ユーザーに表示している画面が一つも存在しない**ことが判明した。具体的には:
+- `UserModelUpdater.ts`の`toDailySnapshot()`が生成する`UserModel.lastDailySnapshot`（`DailyFeaturesSnapshot`型）は`completionRate`/`skipRate`/`rescheduleRate`/`overrunRate`/`slotCompletion`/`estimationRatio`/`focusDurationP75`/`mood`/`energy`/`wins`/`blockers`/`aiConfidence`のみを保持しており、**`averageFocusScore`（focusScore）自体がそもそも含まれていない**。
+- `InsightsView.tsx`（「学習」画面）は`focusLength`（平均集中"時間"、分）・`procrastinationIndex`・`bufferNeed`・独自再計算の`completionRate`/`avgMood`/`avgEnergy`のみを表示しており、`averageFocusScore`は未参照。
+- `TodayView.tsx`の「集中{focusDone}分/目標{focusTarget}分」は`plannedDurationMinutes()`（予定時間）ベースで、`outcome.actualMinutes`/`outcome.focusScore`とは無関係。
+- `PlannerEvaluationResult`（`evaluatePlanner()`の戻り値）は`useDayOrchestrator.ts`内部でDecisionLogに保存されるのみで、`.tsx`から参照している箇所はゼロ。
+
+結論として、前回の最終報告に書いた「InsightsView等でaverageFocusScoreが0%に見える可能性」という懸念は、実装を追った結果**再現しない（＝現状のアプリにそのようなUIは存在しない）**ことが分かった。これは実際のバグではなく、筆者が先回りして書いた推測的な注意書きだった。ユーザーに調査結果を報告し、「対応しない（現状維持）」を選択してもらった。将来`docs/PRODUCT_VISION.md`§8の「学習の可視化（毎日『今日の学び』を1行見せる面）」を実装する際は、`timedOutcomeCount`（または`lastDailySnapshot`に将来focusScore系フィールドを追加する場合は同様のカウント）を見て「未計測」表示に倒す配慮が必要、という点だけ申し送りとして残す。
+
 ### 次回への申し送り
 - **「90分固定・2分割」バグ相当の仕様課題への対応:** 次のいずれかを検討する。(a) `AiScheduleModal.tsx`のタスク一括入力にduration入力欄を追加する、(b) `localTaskDurationEstimate.ts`の`勉強|学習|...`/`プログラ|コーディング|...`ルールの90分固定を、より細かい粒度（例: キーワードごとに幅を持たせる、他の情報と組み合わせる等）に見直す。どちらもUI変更または見積もり仕様の変更を伴うため、着手前にユーザーとスコープを相談すること。
 - **実行フィデリティ動線の強化（UI側）:** 開始→集中→完了をアプリ内で必ず通す動線の強化はまだ未着手。今回は学習ロジック側（欠測日・タイマー未使用の無効化）のみ対応した。
-- その次: 学習の可視化（毎日「今日の学び」を1行見せる面）、Task Proposal Engineの仕上げ（`TaskProposalService`実装、新機能追加はこれで一旦止める）、計測導入（`actualStart`発生率・2週間リテンション）、少数ベータでの2週間ドッグフーディング、課金設計の見直し（差別化コアへ寄せる）。詳細な優先順位と根拠は`docs/PRODUCT_VISION.md`の「§8 近期の重点」を参照。
+- **学習の可視化を実装する際の注意点（新規）:** `averageFocusScore`/focusScoreは現状どのUIにも出ていないが、将来「今日の学び」等でfocusScoreを見せる場合は、`timedOutcomeCount === 0`のときに「0点」ではなく「未計測」等の表示に倒すこと。今回`lastDailySnapshot`自体にfocusScore系フィールドを追加する変更は行っていない（学習ロジックの保存範囲拡張は今回のスコープ外と判断）。
+- その次: Task Proposal Engineの仕上げ（`TaskProposalService`実装、新機能追加はこれで一旦止める）、計測導入（`actualStart`発生率・2週間リテンション）、少数ベータでの2週間ドッグフーディング、課金設計の見直し（差別化コアへ寄せる）。詳細な優先順位と根拠は`docs/PRODUCT_VISION.md`の「§8 近期の重点」を参照。
 - 次回セッション開始時は CLAUDE.md の「セッション開始時」手順を自動で行うこと。複数デバイスの同時作業が実際に起きている前提で、pull結果に見覚えのない変更が含まれていても驚かず内容を読んで文脈を把握すること。
 
 ---
