@@ -107,10 +107,33 @@ claude.aiの分析はさらに、検証可能な3ヶ月の北極星（「2週間
 - 一括入力の所要時間パースは「30分」等の明示的な分数のみに絞り、曖昧な自然言語表現には対応しない。パースできない行は従来通りAI推定にフォールバックする。
 - 所要時間選択の純粋ロジック（`extractDurationHint`/`parseBulkLines`）は`presentation/calendar/bulkTaskInput.ts`に切り出し、テスト可能な形にした。
 
+### 続報4（同日中の作業・実機テストで発覚したバグ修正）
+
+ユーザーが実機（Expo Go、iPhone）で動作確認したところ、まず「AIスケジュール作成」モーダル自体がGemini/Cloud AI未設定だと開けない仕様（`App.tsx`の`geminiConfigured`ゲート、今回変更した機能とは無関係の既存仕様）に当たった。`~/my-calendar-app`という、以前Cursorで開発していた頃の別チェックアウト（`package.json`名`my-calendar-app`、GitHub remoteは`project-calendar.git`で別リポジトリ）に有効な`EXPO_PUBLIC_GEMINI_API_KEY`入りの`.env`が残っていたため、新規キー取得はせずそれをコピーして解決した。
+
+実機テストの結果、詳細入力で「開発」に30分を指定したタスクは正しく30分になったが、「勉強」に30分を指定したタスクは**45分が2セッション（合計90分相当）**になるという再現性のある不具合が見つかった。同じ操作で結果が違う点を手がかりに調査したところ、[resolveAiTasks.ts](../src/presentation/calendar/resolveAiTasks.ts)の「既存タスク再利用」ロジック（`findExistingTaskForAiInput`）が、今回実装したユーザー指定duration優先ロジックより**先に**実行され、同名タスクが既に`inbox`/`ready`状態で存在する場合はそのまま再利用し、新しく指定した`estimatedMinutes`を一切見ないことが原因だと判明した。ユーザーに確認したところ、「勉強」というタイトルはCursorでコードをテストしていた際に使った可能性がある、との回答を得て、この端末のAsyncStorageに残っていた古い「勉強」タスク（未指定時代の推定で90分・`splittable:true`になっていたと推測される）が再利用されたという説明で一致した。
+
+この問題は「開発時代のゴミデータだから今回は無視してよい」というものではなく、3〜7日間のMVPテストでも**同じタイトルのタスクを日をまたいで再入力する**という自然な使い方で再現しうると判断し、ユーザーの承認を得て`resolveAiTasks.ts`を修正した。既存タスクを再利用する際、今回の入力に`estimatedMinutes`が明示指定されていれば、`scaleMinutesForEstimation`でスケーリングした値を`gateway.updateTask()`で反映してから再利用するようにした（指定が無い場合や、指定値が現在値と一致する場合は`updateTask`を呼ばず何もしない）。既存の「Reuses existing Tasks without mutating them (Principle 2)」というコメントには触れる変更になるが、これはAIによる推測での書き換えではなく、ユーザー自身が今まさに入力した値を反映するだけなので、設計原則（AIがTaskを勝手に変更しない）とは矛盾しないと整理した。
+
+この変更に伴い、`resolveAiTaskInputs`のgatewayパラメータ型を`Pick<CalendarEditorGateway, 'createTask'>`から`Pick<CalendarEditorGateway, 'createTask' | 'updateTask'>`に拡張し、呼び出し元の型（`coach/types.ts`の`ApplyCoachScheduleDeps`、`coachApply.ts`の`options`型）も合わせて拡張した。実際の呼び出し元（`App.tsx`の`editorGateway`）は元々フル実装のオブジェクトを渡していたため、実行時の挙動には影響なし。テストは`resolveAiTasks.test.ts`に3件追加（未指定時は既存タスクをそのまま再利用／新規指定時は`updateTask`で更新／指定値が現状と一致する場合は`updateTask`を呼ばない）。
+
+修正後、`npx tsc --noEmit`（0エラー）・`npm test`（30スイート・153件全成功）・`npm run lint`（0エラー・26警告）を確認済み。
+
+### 現状のベースライン
+- 型チェック: 0 エラー
+- テスト: 30 スイート / 153 件 全て成功
+- Lint: 0 エラー / 26 警告（既存の軽微な `no-unused-vars` 等、未対応のまま）
+- git: `main` ブランチ（本エントリのコミット後に `origin/main` と同期予定）
+
+### 決定事項（続報4分）
+- 既存タスク再利用時、ユーザーが今回明示的に指定した`estimatedMinutes`は「AIの推測」ではなく「ユーザー自身の今の入力」として扱い、既存タスクに反映してよいと判断（Principle 2の精神には反しないという整理）。
+- `~/my-calendar-app`（Cursor時代の別チェックアウト、別GitHubリポジトリ）が同一マシン上に存在する。今後もこの手の「同じマシン上の別プロジェクトフォルダ」に遭遇する可能性がある前提で、混同しないよう注意する。
+
 ### 次回への申し送り
 - **「90分固定・2分割」問題は完全解決ではなくMVP前の軽減:** ユーザーが所要時間を指定すれば90分固定は回避できるが、指定しない・パースに失敗する行では引き続き`localTaskDurationEstimate.ts`のキーワードルールが適用される。次フェーズでキーワードルールの粒度改善（(a) 一括入力パースの表現拡充、(b) 90分固定ルール自体の見直し）を検討する。
 - **実行フィデリティ動線の強化（UI側）:** 開始→集中→完了をアプリ内で必ず通す動線の強化はまだ未着手。
 - **学習の可視化を実装する際の注意点:** `averageFocusScore`/focusScoreは現状どのUIにも出ていないが、将来「今日の学び」等でfocusScoreを見せる場合は、`timedOutcomeCount === 0`のときに「0点」ではなく「未計測」等の表示に倒すこと。
+- **実機テストで新しく見つかった懸念（未調査）:** ユーザーの実機に「買い物」タスクが45分+15分という不揃いな分割で表示された（所要時間未指定だったため推定+分割ロジックが適用された結果と推測されるが、詳細未調査）。MVPテスト中に類似の不自然な分割が目立つようなら、`LocalPlacementStrategy.ts`の分割ロジックか、Gemini経由の推定値そのものを確認すること。
 - その次: Task Proposal Engineの仕上げ（`TaskProposalService`実装、新機能追加はこれで一旦止める）、計測導入（`actualStart`発生率・2週間リテンション）、少数ベータでの2週間ドッグフーディング、課金設計の見直し（差別化コアへ寄せる）。詳細な優先順位と根拠は`docs/PRODUCT_VISION.md`の「§8 近期の重点」を参照。
 - 次回セッション開始時は CLAUDE.md の「セッション開始時」手順を自動で行うこと。複数デバイスの同時作業が実際に起きている前提で、pull結果に見覚えのない変更が含まれていても驚かず内容を読んで文脈を把握すること。
 

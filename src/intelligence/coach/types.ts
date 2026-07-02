@@ -46,6 +46,6 @@ export interface CoachConsultInput extends CoachContextInput {
 export interface ApplyCoachScheduleDeps {
   date?: Date;
   defaultDurationMinutes: number;
-  editorGateway: Pick<CalendarEditorGateway, 'createTask'>;
+  editorGateway: Pick<CalendarEditorGateway, 'createTask' | 'updateTask'>;
   plannerGateway: PlannerGateway;
 }

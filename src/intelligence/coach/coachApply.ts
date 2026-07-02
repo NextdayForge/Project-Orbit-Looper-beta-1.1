@@ -19,7 +19,7 @@ export async function applyCoachScheduleAction(
   options: {
     date?: Date;
     defaultDurationMinutes: number;
-    editorGateway: Pick<CalendarEditorGateway, 'createTask'>;
+    editorGateway: Pick<CalendarEditorGateway, 'createTask' | 'updateTask'>;
     plannerGateway: PlannerGateway;
   }
 ): Promise<ApplyCoachScheduleResult> {

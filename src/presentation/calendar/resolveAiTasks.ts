@@ -111,7 +111,7 @@ export async function resolveAiTaskInputs(
 
   defaultEstimatedMinutes: number,
 
-  gateway: Pick<CalendarEditorGateway, 'createTask'>
+  gateway: Pick<CalendarEditorGateway, 'createTask' | 'updateTask'>
 
 ): Promise<ResolveAiTaskInputsResult> {
 
@@ -120,6 +120,8 @@ export async function resolveAiTaskInputs(
   let created = 0;
 
   let reused = 0;
+
+  const userModel = await userModelRepository.get();
 
   const knownTasks = [...existingTasks];
   const pendingInputs: Array<{
@@ -141,7 +143,30 @@ export async function resolveAiTaskInputs(
       normalizedTitle
     );
     if (existing) {
-      resolved.push(existing);
+      const userSpecifiedMinutes =
+        input.estimatedMinutes && input.estimatedMinutes > 0 ? input.estimatedMinutes : null;
+
+      if (userSpecifiedMinutes == null) {
+        resolved.push(existing);
+      } else {
+        // A freshly re-entered duration is the user correcting the task right now —
+        // distinct from AI/estimation silently rewriting it (Principle 2 still holds).
+        const scaledMinutes = scaleMinutesForEstimation(
+          userSpecifiedMinutes,
+          existing.category,
+          userModel.estimationFactor
+        );
+        resolved.push(
+          scaledMinutes === existing.estimatedMinutes
+            ? existing
+            : await gateway.updateTask({
+                ...existing,
+                estimatedMinutes: scaledMinutes,
+                splittable: scaledMinutes > userModel.focusLength,
+                updatedAt: new Date().toISOString(),
+              })
+        );
+      }
       reused += 1;
       continue;
     }
@@ -163,7 +188,6 @@ export async function resolveAiTaskInputs(
       defaultMinutes: defaultEstimatedMinutes,
     }))
   );
-  const userModel = await userModelRepository.get();
 
   for (const item of pendingInputs) {
     const userSpecifiedMinutes =
