@@ -14,6 +14,8 @@ export interface SessionOutcome {
   startedLate: boolean;
   interrupted: boolean;
   focusScore: number;
+  /** True when derived from actual timer usage (actualStart + actualEnd/completedAt). */
+  timerUsed: boolean;
 }
 
 export interface Session {

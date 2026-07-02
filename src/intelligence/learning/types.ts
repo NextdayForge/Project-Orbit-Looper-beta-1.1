@@ -12,6 +12,8 @@ export interface DailyFeatures {
   estimationRatioByCategory: Record<string, number>;
   averageFocusScore: number;
   procrastinationScore: number;
+  /** Count of outcomes with real timer data; used to gate timer-dependent learning signals. */
+  timedOutcomeCount: number;
   focusDurationMinutes: number[];
   energy: number | null;
   mood: number | null;

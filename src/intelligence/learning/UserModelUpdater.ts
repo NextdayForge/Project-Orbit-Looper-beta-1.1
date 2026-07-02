@@ -192,11 +192,14 @@ export function update(
     ),
     bufferNeed,
     focusLength,
-    procrastinationIndex: clamp(
-      ema(userModel.procrastinationIndex, features.procrastinationScore, LEARNING_RATE),
-      0,
-      1
-    ),
+    procrastinationIndex:
+      features.timedOutcomeCount > 0
+        ? clamp(
+            ema(userModel.procrastinationIndex, features.procrastinationScore, LEARNING_RATE),
+            0,
+            1
+          )
+        : userModel.procrastinationIndex,
     lastDailySnapshot: toDailySnapshot(features, userModel, focusLength),
     version: userModel.version + 1,
     updatedAt: new Date().toISOString(),

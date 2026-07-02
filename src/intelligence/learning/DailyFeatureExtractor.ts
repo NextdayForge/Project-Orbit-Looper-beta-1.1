@@ -43,6 +43,11 @@ function isValidEstimationSample(outcome: NonNullable<Session['outcome']>): bool
   return Number.isFinite(outcome.estimationRatio);
 }
 
+/** Only outcomes derived from real timer usage carry a trustworthy time signal (legacy data has timerUsed === undefined). */
+function hasTimerSignal(session: Session): boolean {
+  return session.outcome?.timerUsed === true;
+}
+
 /**
  * Aggregates daily learning signals from Session outcomes (MVP).
  * Mood / energy come from Reflection when present.
@@ -61,10 +66,16 @@ export function extract(
     (session) => session.date === date && (isDayProgressSession(session) || session.status === 'rescheduled')
   );
   const withOutcome = daySessions.filter((session) => session.outcome != null);
+  const timedSessions = withOutcome.filter(hasTimerSignal);
 
-  const outcomes = withOutcome.map((session) => session.outcome!);
-  const completedCount = outcomes.filter((outcome) => outcome.completed).length;
-  const lateCount = outcomes.filter((outcome) => outcome.startedLate).length;
+  // allOutcomes: manual completions count too — still meaningful for completion rate.
+  const allOutcomes = withOutcome.map((session) => session.outcome!);
+  // timedOutcomes: only sessions with real timer data — the only trustworthy source for
+  // time/lateness/focus/estimation signals (manual "mark complete" carries no such signal).
+  const timedOutcomes = timedSessions.map((session) => session.outcome!);
+
+  const completedCount = allOutcomes.filter((outcome) => outcome.completed).length;
+  const lateCount = timedOutcomes.filter((outcome) => outcome.startedLate).length;
   const skipCount = daySessions.filter(
     (session) =>
       session.status === 'skipped' ||
@@ -73,11 +84,11 @@ export function extract(
   const rescheduleCount = allDaySessions.filter((session) => session.status === 'rescheduled').length;
   const rateDenominator = Math.max(allDaySessions.length, 1);
 
-  const focusDurationMinutes = withOutcome
+  const focusDurationMinutes = timedSessions
     .filter((session) => session.outcome!.completed && session.outcome!.actualMinutes > 0)
     .map((session) => session.outcome!.actualMinutes);
 
-  const estimationSamples = withOutcome
+  const estimationSamples = timedSessions
     .filter((session) => session.outcome && isValidEstimationSample(session.outcome))
     .map((session) => ({
       category: (session.taskId && taskCategoryById.get(session.taskId)) || 'general',
@@ -85,7 +96,7 @@ export function extract(
     }));
 
   const slotEnergySignals = createEmptySlotAccumulators();
-  for (const session of withOutcome) {
+  for (const session of timedSessions) {
     const outcome = session.outcome!;
     const slotIndex = slotIndexForMinute(session.startMinutes);
     const signal = sessionEnergySignal(outcome.completed, outcome.focusScore);
@@ -95,14 +106,15 @@ export function extract(
 
   return {
     date,
-    completionRate: outcomes.length > 0 ? completedCount / outcomes.length : 0,
+    completionRate: allOutcomes.length > 0 ? completedCount / allOutcomes.length : 0,
     skipRate: allDaySessions.length > 0 ? skipCount / rateDenominator : 0,
     rescheduleRate: allDaySessions.length > 0 ? rescheduleCount / rateDenominator : 0,
     averageEstimationRatio: average(estimationSamples.map((sample) => sample.ratio)),
     estimationSampleCount: estimationSamples.length,
     estimationRatioByCategory: averageByCategory(estimationSamples),
-    averageFocusScore: average(outcomes.map((outcome) => outcome.focusScore)),
-    procrastinationScore: outcomes.length > 0 ? lateCount / outcomes.length : 0,
+    averageFocusScore: average(timedOutcomes.map((outcome) => outcome.focusScore)),
+    procrastinationScore: timedOutcomes.length > 0 ? lateCount / timedOutcomes.length : 0,
+    timedOutcomeCount: timedOutcomes.length,
     focusDurationMinutes,
     energy: reflection?.energy ?? null,
     mood: reflection?.mood ?? null,

@@ -47,8 +47,34 @@ claude.aiの分析はさらに、検証可能な3ヶ月の北極星（「2週間
 - オンボーディングはUserModelを一切seedしていない（`createDefaultUserModel()`の汎用デフォルトから全ユーザーが開始）。
 - 学習ループの実行フィデリティに構造的な穴が2つある: (1) `OutcomeDeriver.ts`がタイマー未使用の完了を「完璧な実行」として無信号で学習してしまう、(2) `DailyFeatureExtractor.ts`が欠測日を先延ばしゼロの「良い日」として誤学習してしまう。
 
+### 続報（同日中の作業）
+
+前回の申し送り「実行フィデリティの穴を塞ぐ」に着手する前に、別デバイス（このマシン）で新規クローンしたところ11コミット遅れており、`git pull`で本エントリを含む最新化を実施（詳細は本エントリ後半の「別デバイスでの初回セットアップ」節を参照）。ベースライン（型チェック・テスト・lint）を再確認したところ完全一致を確認した上で、申し送りの最優先事項に着手した。
+
+まず「90分に固定され2つに分割される」バグの再現経路を、コードを変更せず調査した。原因は単一のバグではなく、4点の仕様が連鎖した結果だと判明した: (1) `AiScheduleModal.tsx`のタスク一括入力（`AiTaskInput`型）にはタイトルと優先度しかなく、所要時間を入力する手段がそもそも存在しない。(2) `resolveAiTasks.ts`がGemini未設定時に`localTaskDurationEstimate.ts`にフォールバックし、そこの`DURATION_RULES`が「勉強|学習|復習|予習|宿題|レポート|論文|課題|試験」「プログラ|コーディング|実装|開発|デバッグ」という非常に広いキーワード群に対し無条件で`minutes: 90`を返す。日常的なタスク名の多くがこれにヒットする。(3) `resolveAiTasks.ts`の`splittable: scaledMinutes > userModel.focusLength`により、既定`focusLength`(45分)に対し90分の見積りは常に`splittable: true`になる。(4) `LocalPlacementStrategy.ts`が`splittable`なタスクを`focusLength`単位で刻むため、90分のタスクは機械的に45分×2セッションに分割される。GeminiPlacementStrategy側はfocusLength/splittable/90を一切参照しておらず無関係（Placementは既定でLocalPlacementStrategyのみ、ローカルファースト原則通り）。ユーザーと相談の上、**これは複数の設計判断が連動した結果であり、今回は仕様変更をせず原因調査の記録のみ**とすることで合意した。次フェーズの検討課題として、(a) AiScheduleModalにduration入力を追加する、(b) `localTaskDurationEstimate.ts`の90分固定ルールをより細かい粒度にする、のいずれかを検討する（詳細は下記「次回への申し送り」参照）。
+
+続いて、実行フィデリティの穴2点に対応した。`OutcomeDeriver.ts`の`resolveActualMinutes()`はタイマー未使用（`actualStart`/`actualEnd`が無い）だと予定時間にフォールバックし、`estimationRatio≈1.0`・`focusScore=1.0`という「完璧な実行」として無信号のまま学習されてしまう問題に対し、`SessionOutcome`に`timerUsed: boolean`を追加し、`actualStart`かつ(`actualEnd`または`completedAt`)がある場合のみ`true`とするようにした。既存の保存データには`timerUsed`が存在しない（`undefined`）可能性があるため、学習側は`=== true`の厳密比較のみで判定し、`undefined`は自動的に「タイマーなし」として扱われるようにした（型はオプショナルにせず`boolean`必須のまま。新規導出は必ず`deriveOutcome()`経由のため）。
+
+`DailyFeatureExtractor.ts`は、outcomeを一括で除外せず`allOutcomes`（完了率などマニュアル完了でも意味がある指標用）と`timedOutcomes`（`timerUsed === true`のみ、時間・遅刻・集中スコア・推定誤差・エネルギースロット学習用）に分離した。`completionRate`は引き続き`allOutcomes`ベースのまま維持し、マニュアル完了も「完了した」という意味では有効なシグナルとして扱う既存挙動を壊さないようにした。`DailyFeatures`型には`timedOutcomeCount`（タイマー実績のあるoutcome件数）を追加し、`UserModelUpdater.ts`の`procrastinationIndex`更新を`bufferNeed`/`estimationFactor`と同じ流儀で`features.timedOutcomeCount > 0`によりガードした。ガードが成立しない日（セッションを何も実行しなかった日）は`userModel.procrastinationIndex`を変更せず現状維持する。
+
+テストは`src/__tests__/learning.test.ts`に「マニュアル完了はcompletionRateにはカウントされるがタイマー系シグナルからは除外される」「`timerUsed`が無い旧データはタイマーなし扱いになる」「`timedOutcomeCount: 0`の日は`procrastinationIndex`が変化しない」の3件を追加し、既存のoutcomeリテラルには`timerUsed: true`を明記した。新規に`src/__tests__/outcomeDeriver.test.ts`を作成し、`deriveOutcome()`の`timerUsed`判定（actualStart+actualEnd、actualStart+completedAt、どちらも無い場合、actualStartのみ無い場合）を検証した。
+
+修正後、`npx tsc --noEmit`（0エラー）・`npm test`（28スイート・139件全成功）・`npm run lint`（0エラー・26警告、件数は修正前と同一）を実行し、ベースラインの悪化がないことを確認した。
+
+### 現状のベースライン
+- 型チェック: 0 エラー
+- テスト: 28 スイート / 139 件 全て成功
+- Lint: 0 エラー / 26 警告（既存の軽微な `no-unused-vars` 等、未対応のまま）
+- git: `main` ブランチ（本エントリのコミット後に `origin/main` と同期予定）
+
+### 決定事項（続報分）
+- 「90分固定・2分割」は今回コード変更しない。原因調査のみ記録し、次フェーズの課題として持ち越す。
+- 実行フィデリティの穴のうち、`OutcomeDeriver.ts`のタイマー未使用フォールバックと`DailyFeatureExtractor.ts`/`UserModelUpdater.ts`の欠測日誤学習（procrastinationIndex）の2点を修正。「開始→集中→完了をアプリ内で必ず通す動線の強化」（UI側の対応）は今回のスコープ外のまま持ち越し。
+- `completionRate`はマニュアル完了も含めて計算する既存挙動を維持する（今回の目的は「マニュアル完了を完璧な時間実績として学習しないこと」であり、完了自体をカウントしないことではない）。
+
 ### 次回への申し送り
-- **最優先: 実行フィデリティの穴を塞ぐ。** 開始→集中→完了をアプリ内で必ず通す動線の強化と、`OutcomeDeriver.ts`/`DailyFeatureExtractor.ts`への欠測日学習ガードの追加。「90分に固定され2分割される」バグ（未調査のまま持ち越し）は、この動線を信頼させるための入口として先に潰すのが自然。
+- **「90分固定・2分割」バグ相当の仕様課題への対応:** 次のいずれかを検討する。(a) `AiScheduleModal.tsx`のタスク一括入力にduration入力欄を追加する、(b) `localTaskDurationEstimate.ts`の`勉強|学習|...`/`プログラ|コーディング|...`ルールの90分固定を、より細かい粒度（例: キーワードごとに幅を持たせる、他の情報と組み合わせる等）に見直す。どちらもUI変更または見積もり仕様の変更を伴うため、着手前にユーザーとスコープを相談すること。
+- **実行フィデリティ動線の強化（UI側）:** 開始→集中→完了をアプリ内で必ず通す動線の強化はまだ未着手。今回は学習ロジック側（欠測日・タイマー未使用の無効化）のみ対応した。
 - その次: 学習の可視化（毎日「今日の学び」を1行見せる面）、Task Proposal Engineの仕上げ（`TaskProposalService`実装、新機能追加はこれで一旦止める）、計測導入（`actualStart`発生率・2週間リテンション）、少数ベータでの2週間ドッグフーディング、課金設計の見直し（差別化コアへ寄せる）。詳細な優先順位と根拠は`docs/PRODUCT_VISION.md`の「§8 近期の重点」を参照。
 - 次回セッション開始時は CLAUDE.md の「セッション開始時」手順を自動で行うこと。複数デバイスの同時作業が実際に起きている前提で、pull結果に見覚えのない変更が含まれていても驚かず内容を読んで文脈を把握すること。
 

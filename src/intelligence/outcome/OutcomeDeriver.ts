@@ -41,6 +41,11 @@ function resolveFocusScore(session: Session, startedLate: boolean): number {
   return clamp(score, 0, 1);
 }
 
+/** True when the session has real timer data, not just a manual completion toggle. */
+function resolveTimerUsed(session: Session): boolean {
+  return Boolean(session.actualStart && (session.actualEnd || session.completedAt));
+}
+
 /**
  * Derives execution outcome from a completed Session.
  * Caller must ensure status === 'completed' and completedAt is set.
@@ -59,6 +64,7 @@ export function deriveOutcome(session: Session): SessionOutcome {
     startedLate,
     interrupted,
     focusScore: resolveFocusScore(session, startedLate),
+    timerUsed: resolveTimerUsed(session),
   };
 }
 

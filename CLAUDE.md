@@ -44,7 +44,7 @@ DayType は 4 種のみ: `REST / LIGHT / NORMAL / PUSH`（SPRINT は未実装）
 | 型チェック | `npx tsc --noEmit` |
 | Android プレビュービルド | `npm run build:android:preview` |
 
-現状のベースライン（2026-07-01時点）: 型チェック0エラー / テスト27スイート・132件全て成功 / lint 0エラー・26警告（既存の軽微な `no-unused-vars` 等、未対応）。
+現状のベースライン（2026-07-02時点）: 型チェック0エラー / テスト28スイート・139件全て成功 / lint 0エラー・26警告（既存の軽微な `no-unused-vars` 等、未対応）。
 
 ---
 

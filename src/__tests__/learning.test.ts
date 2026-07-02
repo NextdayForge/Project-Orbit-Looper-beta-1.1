@@ -25,6 +25,7 @@ function makeFeatures(overrides: Partial<DailyFeatures> = {}): DailyFeatures {
     estimationRatioByCategory: { general: 1 },
     averageFocusScore: 0.7,
     procrastinationScore: 0.2,
+    timedOutcomeCount: 1,
     focusDurationMinutes: [45],
     energy: 3,
     mood: 3,
@@ -48,6 +49,7 @@ describe('DailyFeatureExtractor.extract', () => {
           startedLate: true,
           interrupted: false,
           focusScore: 0.8,
+          timerUsed: true,
         },
       }),
       makeSession({
@@ -60,6 +62,7 @@ describe('DailyFeatureExtractor.extract', () => {
           startedLate: false,
           interrupted: true,
           focusScore: 0.5,
+          timerUsed: true,
         },
       }),
     ];
@@ -69,6 +72,7 @@ describe('DailyFeatureExtractor.extract', () => {
     expect(features.procrastinationScore).toBe(0.5);
     expect(features.averageEstimationRatio).toBeCloseTo(1.05);
     expect(features.estimationSampleCount).toBe(2);
+    expect(features.timedOutcomeCount).toBe(2);
   });
 
   it('ignores poisoned estimation ratios from instant checkbox completion', () => {
@@ -83,6 +87,7 @@ describe('DailyFeatureExtractor.extract', () => {
           startedLate: false,
           interrupted: false,
           focusScore: 0.4,
+          timerUsed: true,
         },
       }),
     ];
@@ -106,6 +111,7 @@ describe('DailyFeatureExtractor.extract', () => {
           startedLate: false,
           interrupted: false,
           focusScore: 0.8,
+          timerUsed: true,
         },
       }),
     ];
@@ -155,6 +161,7 @@ describe('DailyFeatureExtractor.extract', () => {
           startedLate: false,
           interrupted: false,
           focusScore: 0.8,
+          timerUsed: true,
         },
       }),
       makeSession({
@@ -167,6 +174,7 @@ describe('DailyFeatureExtractor.extract', () => {
           startedLate: false,
           interrupted: false,
           focusScore: 0.7,
+          timerUsed: true,
         },
       }),
     ];
@@ -179,6 +187,51 @@ describe('DailyFeatureExtractor.extract', () => {
     expect(features.completionRate).toBe(0);
     expect(features.procrastinationScore).toBe(0);
     expect(features.estimationSampleCount).toBe(0);
+    expect(features.timedOutcomeCount).toBe(0);
+  });
+
+  it('counts manual completions toward completionRate but excludes them from timer-dependent signals', () => {
+    const sessions = [
+      makeSession({
+        date: DATE,
+        outcome: {
+          estimatedMinutes: 45,
+          actualMinutes: 45,
+          completed: true,
+          estimationRatio: 1.0,
+          startedLate: false,
+          interrupted: false,
+          focusScore: 1.0,
+          timerUsed: false,
+        },
+      }),
+    ];
+
+    const features = extract(DATE, sessions, null, []);
+    expect(features.completionRate).toBe(1);
+    expect(features.timedOutcomeCount).toBe(0);
+    expect(features.estimationSampleCount).toBe(0);
+    expect(features.procrastinationScore).toBe(0);
+    expect(features.averageFocusScore).toBe(0);
+    expect(features.focusDurationMinutes).toEqual([]);
+  });
+
+  it('treats legacy outcomes without timerUsed as not timer-based', () => {
+    const legacyOutcome = {
+      estimatedMinutes: 45,
+      actualMinutes: 45,
+      completed: true,
+      estimationRatio: 1.0,
+      startedLate: false,
+      interrupted: false,
+      focusScore: 1.0,
+    } as unknown as NonNullable<ReturnType<typeof makeSession>['outcome']>;
+
+    const sessions = [makeSession({ date: DATE, outcome: legacyOutcome })];
+
+    const features = extract(DATE, sessions, null, []);
+    expect(features.timedOutcomeCount).toBe(0);
+    expect(features.procrastinationScore).toBe(0);
   });
 });
 
@@ -233,6 +286,16 @@ describe('UserModelUpdater.update', () => {
     const next = update(model, makeFeatures({ procrastinationScore: 1 }));
     expect(next.procrastinationIndex).toBeGreaterThanOrEqual(0);
     expect(next.procrastinationIndex).toBeLessThanOrEqual(1);
+  });
+
+  it('does not move procrastination index on a day with no timed outcomes', () => {
+    const model = createDefaultUserModel();
+    model.procrastinationIndex = 0.4;
+    const next = update(
+      model,
+      makeFeatures({ timedOutcomeCount: 0, procrastinationScore: 0 })
+    );
+    expect(next.procrastinationIndex).toBe(0.4);
   });
 
   it('learns focusLength from completed session durations', () => {
