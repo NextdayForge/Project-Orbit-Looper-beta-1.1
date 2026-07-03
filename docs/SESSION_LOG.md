@@ -151,7 +151,32 @@ claude.aiの分析はさらに、検証可能な3ヶ月の北極星（「2週間
 - ユーザーが所要時間ピッカーで明示的に選んだ時間は、常に「1コマぶんの単一セッション」として扱い、`focusLength`基準の自動分割対象からは除外する。AI推定（未指定時）の分割挙動は変更しない。
 - 前回の最終報告に書いた「60・90・120分は分割されてよい」という判断は誤りだったとして訂正済み。
 
+### 続報6（同スレッドの続き・「明日にずらす」ロールオーバーの調査と修正）
+
+ユーザーから「AIで予定生成した際、今日の容量が足りずに一部が明日にずれるとき、今回の生成とは無関係な、まだ終わっていない既存タスクまで明日に移ってしまう」という報告があり、まずコード変更なしで調査した。
+
+原因は[placementRollover.ts](../src/presentation/calendar/placementRollover.ts)の`runPlacementWithRollover()`。今回AIで追加したタスクが今日に収まらない場合、その中で最も優先度が高いものを基準に`findLowerPriorityTaskIdsToBump()`を呼ぶが、この関数は**今日すでに予定されている全セッション**（今回の生成対象外のタスクも含む）を優先度だけで走査し、基準より優先度が低い未完了タスクを無条件に全て明日へ「バンプ」する設計になっていた。ユーザー報告の症状と一致することを確認した。
+
+調査を続けたところ、コード読解だけで**もう一つ独立した副作用**にも気づいた。バンプ処理（`bumpPlan = generateDayPlan(tomorrow, toBump)` → `applyDayPlan(bumpPlan, {mode:'replaceTaskSessions', taskIds: toBump})`）は明日側にセッションを追加するだけで、**今日側に残っている元のセッションを取り消す処理がどこにも無い**ことが分かった。[placementTaskSelector.ts](../src/intelligence/planner/placementTaskSelector.ts)の`getAnchorSessionsForReplan()`は、再生成対象外（＝バンプされたタスクも含む）のセッションを「動かさない既存予定（anchor）」として扱うため、バンプ後に今日のプランを再生成しても、バンプされたタスクの古いセッションはそのまま今日に居座り続ける。ユーザーに確認したところ、**この二重表示にはアプリ使用中から気づいていたが今まで報告していなかった**とのことで、実在するバグと確定した。この二次的な問題は、単なる「表示上の重複」だけでなく、バンプの本来の目的（今日の空き容量を作る）自体を無効化してしまう点でも実害があると判断した。
+
+ユーザー承認を得て修正した。`applyDayPlan`は「配置するセッションが0件かつfixed以外のブロックが0件なら即座に何もせず`skipped_empty`を返す」という早期リターンを持つため、空プランを渡すだけでは今日側の後片付けができないと判明。過去日からの繰り越し処理（`taskCarryOver.ts`の`buildPastIncompleteRescheduleBatch` → `sessionRepository.saveMany()`で直接永続化するパターン）が全く同じ課題を別の場所で既に解決していたため、これに倣った。`placementRollover.ts`に`buildBumpedTodayRescheduleBatch()`（今日・対象taskId・アクティブかつ未完了のセッションを`status:'rescheduled'`にする純粋関数）を追加し、`PlacementRolloverDeps`に`saveSessions`を新規注入。バンプ確定後、明日側への適用に続けて今日側の元セッションを`saveSessions`で`rescheduled`にしてから`reload()`するようにした。これにより後続の今日プラン再生成時に`getAnchorSessionsForReplan()`がその古いセッションを anchor として扱わなくなり、二重表示と「バンプしても空き容量が実際には空かない」問題の両方が同時に解消される。
+
+`useDayOrchestrator.ts`側は既にimport済みの`sessionRepository.saveMany`をそのまま渡すだけで済んだ（新規import不要）。テストは`placementRollover.test.ts`に`runPlacementWithRollover`自体への新規テスト2件を追加（バンプ時に今日の古いセッションが`rescheduled`で保存されること／バンプが発生しない場合は`saveSessions`が呼ばれないこと）。
+
+修正後、`npx tsc --noEmit`（0エラー）・`npm test`（30スイート・158件全成功）・`npm run lint`（0エラー・26警告）を確認済み。
+
+### 現状のベースライン
+- 型チェック: 0 エラー
+- テスト: 30 スイート / 158 件 全て成功
+- Lint: 0 エラー / 26 警告（既存の軽微な `no-unused-vars` 等、未対応のまま）
+- git: `main` ブランチ（本エントリのコミット後に `origin/main` と同期予定）
+
+### 決定事項（続報6分）
+- バンプ（明日への繰り越し）が発生した際は、今日側の元セッションを`rescheduled`にして必ず後片付けする。Sessionは削除せず`rescheduled`で履歴保持するという設計原則（第6原則）に沿った実装とした。
+- `findLowerPriorityTaskIdsToBump()`が「今日の予定表全体」を対象に優先度だけでバンプ範囲を決める広すぎる設計自体は、今回は変更しなかった（次回への申し送りとして残す）。
+
 ### 次回への申し送り
+- **バンプ対象の範囲が広すぎる問題は未解決:** `findLowerPriorityTaskIdsToBump()`は「今回のAI生成と無関係な既存タスク」も含めて優先度だけでバンプ対象を決めており、必要な分だけ（不足時間を満たす最小限）バンプする設計にはなっていない。二重表示は続報6で解消したが、「関係ないタスクまで明日に押し出される」という体験自体はまだ残っている。次フェーズで、バンプ範囲を「新規タスクと時間的に競合する分だけ」に絞るか、不足時間を満たすまでの必要最小限にするかを検討する。
 - **「90分固定・2分割」問題は完全解決ではなくMVP前の軽減:** ユーザーが所要時間を指定すれば90分固定・不揃いな分割は回避できるが、指定しない・パースに失敗する行では引き続き`localTaskDurationEstimate.ts`のキーワードルール＋focusLength分割が適用される。次フェーズでキーワードルールの粒度改善（(a) 一括入力パースの表現拡充、(b) 90分固定ルール自体の見直し）を検討する。
 - **実行フィデリティ動線の強化（UI側）:** 開始→集中→完了をアプリ内で必ず通す動線の強化はまだ未着手。
 - **学習の可視化を実装する際の注意点:** `averageFocusScore`/focusScoreは現状どのUIにも出ていないが、将来「今日の学び」等でfocusScoreを見せる場合は、`timedOutcomeCount === 0`のときに「0点」ではなく「未計測」等の表示に倒すこと。

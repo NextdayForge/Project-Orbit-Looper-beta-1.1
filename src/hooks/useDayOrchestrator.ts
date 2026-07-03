@@ -142,6 +142,7 @@ export function useDayOrchestrator() {
           generateDayPlan,
           applyDayPlan,
           reload: load,
+          saveSessions: sessionRepository.saveMany,
         });
 
         if (outcome.result === 'applied') {

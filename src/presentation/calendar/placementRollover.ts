@@ -77,6 +77,34 @@ function titlesFor(taskIds: string[], tasks: Task[]): string[] {
     .filter((title): title is string => Boolean(title));
 }
 
+/**
+ * Sessions on `dateKey` for the bumped tasks — must be marked rescheduled so they don't
+ * linger alongside the new session just added on tomorrow's plan (Session history rule:
+ * never delete, mark rescheduled instead — see session.ts isActivePlacementSession()).
+ */
+function buildBumpedTodayRescheduleBatch(
+  sessions: Session[],
+  dateKey: string,
+  taskIds: string[],
+  now: string
+): Session[] {
+  const taskSet = new Set(taskIds);
+  return sessions
+    .filter(
+      (session) =>
+        session.date === dateKey &&
+        session.taskId != null &&
+        taskSet.has(session.taskId) &&
+        isActivePlacementSession(session) &&
+        session.status !== 'completed'
+    )
+    .map((session) => ({
+      ...session,
+      status: 'rescheduled' as const,
+      rescheduledAt: now,
+    }));
+}
+
 export function buildRolloverNotice(outcome: PlanApplyOutcome): string | null {
   const parts: string[] = [];
 
@@ -106,12 +134,13 @@ interface PlacementRolloverDeps {
   generateDayPlan: (date: Date, taskIds: string[]) => Promise<DayPlan>;
   applyDayPlan: (plan: DayPlan, options: ApplyDayPlanOptions) => Promise<ApplyDayPlanResult>;
   reload: () => Promise<{ tasks: Task[]; sessions: Session[] }>;
+  saveSessions: (sessions: Session[]) => Promise<unknown>;
 }
 
 export async function runPlacementWithRollover(
   deps: PlacementRolloverDeps
 ): Promise<PlanApplyOutcome> {
-  const { targetDate, taskIds, isToday, generateDayPlan, applyDayPlan, reload } = deps;
+  const { targetDate, taskIds, isToday, generateDayPlan, applyDayPlan, reload, saveSessions } = deps;
   let { tasks, sessions } = deps;
 
   const dateKey = toDateKey(targetDate);
@@ -136,6 +165,19 @@ export async function runPlacementWithRollover(
         taskIds: toBump,
       });
       bumpedTomorrowTitles.push(...titlesFor(toBump, tasks));
+
+      // Without this, the bumped tasks' original sessions stay active on `dateKey`,
+      // duplicating them alongside the new tomorrow session and keeping their old
+      // slot "anchored" (occupied) when today's plan is regenerated below.
+      const staleTodaySessions = buildBumpedTodayRescheduleBatch(
+        sessions,
+        dateKey,
+        toBump,
+        new Date().toISOString()
+      );
+      if (staleTodaySessions.length > 0) {
+        await saveSessions(staleTodaySessions);
+      }
 
       ({ tasks, sessions } = await reload());
       plan = await generateDayPlan(targetDate, taskIds);
