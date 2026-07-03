@@ -44,13 +44,21 @@ export function getUnplacedTaskIds(
   });
 }
 
+/**
+ * Bumps only as many lower-priority tasks as needed to free up `neededMinutes`,
+ * least-important first — instead of sweeping every lower-priority task off the day.
+ * Minutes-only heuristic: doesn't guarantee the freed time is one usable contiguous
+ * gap (see SESSION_LOG 2026-07-02 for the considered — and deferred — iterative
+ * regenerate-and-check alternative).
+ */
 export function findLowerPriorityTaskIdsToBump(
   date: string,
   sessions: Session[],
   tasks: Task[],
-  urgentPriority: number
+  urgentPriority: number,
+  neededMinutes: number
 ): string[] {
-  const ids = new Set<string>();
+  const candidateMinutesByTaskId = new Map<string, number>();
 
   for (const session of sessions) {
     if (session.date !== date || !session.taskId) {
@@ -65,10 +73,33 @@ export function findLowerPriorityTaskIdsToBump(
       continue;
     }
 
-    ids.add(task.id);
+    const minutes = session.endMinutes - session.startMinutes;
+    candidateMinutesByTaskId.set(
+      task.id,
+      (candidateMinutesByTaskId.get(task.id) ?? 0) + minutes
+    );
   }
 
-  return [...ids];
+  const candidates = [...candidateMinutesByTaskId.entries()]
+    .map(([taskId, minutes]) => ({
+      taskId,
+      minutes,
+      priority: tasks.find((task) => task.id === taskId)?.priority ?? urgentPriority + 1,
+    }))
+    .sort((a, b) => b.priority - a.priority);
+
+  const selected: string[] = [];
+  let freedMinutes = 0;
+
+  for (const candidate of candidates) {
+    if (freedMinutes >= neededMinutes) {
+      break;
+    }
+    selected.push(candidate.taskId);
+    freedMinutes += candidate.minutes;
+  }
+
+  return selected;
 }
 
 function titlesFor(taskIds: string[], tasks: Task[]): string[] {
@@ -156,7 +187,18 @@ export async function runPlacementWithRollover(
     const urgentPriority = Math.min(
       ...unplaced.map((id) => tasks.find((task) => task.id === id)?.priority ?? 5)
     );
-    const toBump = findLowerPriorityTaskIdsToBump(dateKey, sessions, tasks, urgentPriority);
+    const neededMinutes = unplaced.reduce((sum, id) => {
+      const task = tasks.find((item) => item.id === id);
+      if (!task) {
+        return sum;
+      }
+      const remaining = getRemainingMinutesForPlacement(task, dateKey, sessions);
+      const placedMinutes = plan.sessions
+        .filter((session) => session.taskId === id)
+        .reduce((placedSum, session) => placedSum + (session.endMinutes - session.startMinutes), 0);
+      return sum + Math.max(0, remaining - placedMinutes);
+    }, 0);
+    const toBump = findLowerPriorityTaskIdsToBump(dateKey, sessions, tasks, urgentPriority, neededMinutes);
 
     if (toBump.length > 0) {
       const bumpPlan = await generateDayPlan(tomorrow, toBump);

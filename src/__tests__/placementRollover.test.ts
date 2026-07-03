@@ -25,8 +25,74 @@ describe('placementRollover', () => {
     const high = makeTask({ id: 'high', priority: 1 });
     const session = makeSession({ taskId: 'low', date: '2026-06-28', status: 'planned' });
 
-    const bumped = findLowerPriorityTaskIdsToBump('2026-06-28', [session], [low, high], 2);
+    const bumped = findLowerPriorityTaskIdsToBump('2026-06-28', [session], [low, high], 2, 30);
     expect(bumped).toEqual(['low']);
+  });
+
+  it('bumps only as many low-priority tasks as needed to free the required minutes', () => {
+    const leastImportant = makeTask({ id: 'low-a', priority: 5 });
+    const lessImportant = makeTask({ id: 'low-b', priority: 4 });
+    const sessionA = makeSession({
+      taskId: 'low-a',
+      date: '2026-06-28',
+      startMinutes: 9 * 60,
+      endMinutes: 9 * 60 + 30,
+      status: 'planned',
+    });
+    const sessionB = makeSession({
+      taskId: 'low-b',
+      date: '2026-06-28',
+      startMinutes: 10 * 60,
+      endMinutes: 10 * 60 + 30,
+      status: 'planned',
+    });
+
+    const bumped = findLowerPriorityTaskIdsToBump(
+      '2026-06-28',
+      [sessionA, sessionB],
+      [leastImportant, lessImportant],
+      2,
+      30
+    );
+
+    expect(bumped).toEqual(['low-a']);
+  });
+
+  it('bumps the least-important candidate first, then the next, until enough minutes are freed', () => {
+    const leastImportant = makeTask({ id: 'low-a', priority: 5 });
+    const lessImportant = makeTask({ id: 'low-b', priority: 4 });
+    const sessionA = makeSession({
+      taskId: 'low-a',
+      date: '2026-06-28',
+      startMinutes: 9 * 60,
+      endMinutes: 9 * 60 + 30,
+      status: 'planned',
+    });
+    const sessionB = makeSession({
+      taskId: 'low-b',
+      date: '2026-06-28',
+      startMinutes: 10 * 60,
+      endMinutes: 10 * 60 + 30,
+      status: 'planned',
+    });
+
+    const bumped = findLowerPriorityTaskIdsToBump(
+      '2026-06-28',
+      [sessionA, sessionB],
+      [leastImportant, lessImportant],
+      2,
+      50
+    );
+
+    expect(bumped).toEqual(['low-a', 'low-b']);
+  });
+
+  it('returns nothing to bump when no minutes are needed', () => {
+    const low = makeTask({ id: 'low', priority: 5 });
+    const session = makeSession({ taskId: 'low', date: '2026-06-28', status: 'planned' });
+
+    const bumped = findLowerPriorityTaskIdsToBump('2026-06-28', [session], [low], 2, 0);
+    expect(bumped).toEqual([]);
   });
 
   describe('runPlacementWithRollover', () => {
