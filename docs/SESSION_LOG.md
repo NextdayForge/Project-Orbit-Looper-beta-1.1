@@ -265,8 +265,32 @@ P1最後の残件「90分固定・2分割」の根本対応に着手した。ま
 
 検証はtsc 0エラー・31スイート167件全成功・lint 0エラー26警告（ベースライン維持）。
 
+### 続報11（同スレッドの続き・プロキシデプロイと、Geminiキー漏洩→ローテーション）
+
+続報10のタスクリストのうち、(2) `workers/looper-gemini-proxy` のデプロイに着手した。`npm install`は導入済みで即完了。`npx wrangler whoami`で未認証と判明したため`npx wrangler login`をバックグラウンドで起動し、ブラウザでユーザーがCloudflareアカウント（`nextdayforge@gmail.com`）にログイン・認可して完了。
+
+secretsの設定は値をチャットに一切出さない方法で実施した: `GEMINI_API_KEY`は`.env`の既存値を`grep | cut | wrangler secret put`でシェル内完結のまま流し込み、`BETA_TOKEN`は`openssl rand -hex 32`でその場生成して同様に設定。`npm run deploy`で`https://looper-gemini-proxy.nextdayforge.workers.dev`にデプロイ成功。生成した`BETA_TOKEN`と発行されたURLを`.env`に追記し、`docs/CLOUD_AI_PROXY.md`記載の変数名（`EXPO_PUBLIC_LOOPER_AI_PROXY_URL`/`EXPO_PUBLIC_LOOPER_AI_BETA_TOKEN`）に合わせた。
+
+**この過程で事故が発生した。** `.env`の中身を`Read`ツールで確認した際、`EXPO_PUBLIC_GEMINI_API_KEY`の実値がそのまま会話ログに表示されてしまった（本来はgrep等で値を伏せたまま扱うべきだった操作ミス）。即座にユーザーに報告し、キーのローテーションを提案・実施した。
+
+ローテーション手順: (1) https://aistudio.google.com/apikey で漏洩したキーを削除、(2) 新規キーを発行、(3) ユーザー自身の手元のターミナルで`npx wrangler secret put GEMINI_API_KEY`を実行し新キーを直接入力（Cloudflare側は再デプロイ不要で即反映）、(4) `.env`もユーザー自身がテキストエディタで直接書き換え。**この2ステップは値を私が一切見ない/扱わない設計にした**（値を私に見せる形にすると同じ事故を再現するため、意図的にユーザー側作業に切り出した）。完了はユーザー申告で確認し、`.env`のタイムスタンプ更新とファイル内に該当行が存在することのみを（値を見ずに）確認した。
+
+古いキーが焼き込まれていた可能性のある続報10の`dist/`ビルドは削除し、ローテーション後の`.env`で`npx expo export --platform web`を再実行して再生成した。`~/my-calendar-app/.env`（Cursor時代の別プロジェクト、別GitHubリポジトリ）にも同じ旧キーが残っているが、無効化済みキーのため実害なしと判断し据え置き（今後そちらを使うなら要差し替え）。
+
+最後に全体のgit状態を確認したところ、`git status`はクリーン、`origin/main`と完全同期（ahead/behind 0/0）で、**push待ちの変更は無かった**（続報9・続報10の内容は既にpush済み）。`dist/`は`.gitignore`対象のためコミット不要。ベースライン再確認: tsc 0エラー・31スイート167件全成功・lint 0エラー26警告。
+
+### 現状のベースライン
+- 型チェック: 0 エラー
+- テスト: 31 スイート / 167 件 全て成功
+- Lint: 0 エラー / 26 警告（既存の軽微な `no-unused-vars` 等、未対応のまま）
+- git: `main` ブランチ、`origin/main` と完全同期済み（push待ちなし）
+
+### 決定事項（続報11分）
+- 秘密情報（APIキー等）を含むファイルは、値を伏せる操作（grep/cut等でパイプ）を徹底し、`Read`ツールでの直接閲覧は避ける。今回の事故を教訓として厳格化。
+- secret値の設定・`.env`編集など「値そのものを扱う操作」は、可能な限りユーザー自身の手元操作に切り出す（Claude側が値を見ない設計を優先する）。
+
 ### 次回への申し送り
-- **LT配布の残タスク:** (2)workers/looper-gemini-proxyのデプロイ（実装済みコードあり、wrangler login+secretsはユーザーのCloudflareアカウント作業）→(3)Vercelデプロイ（プロキシURL/トークンを環境変数注入）→(4)Android APKビルド（eas build）→(5)リリースチェック（`BETA_FORCE_PRO_PLAN`=false、ローカルdist/を公開しない）→(6)QR・フィードバックフォーム。
+- **LT配布の残タスク（更新）:** (2)workers/looper-gemini-proxyのデプロイは完了（`https://looper-gemini-proxy.nextdayforge.workers.dev`、secrets設定済み、Geminiキーはローテーション済みの新キー）。次は(3)Vercelデプロイ（プロキシURL/トークンはVercel側の環境変数として別途設定が必要、`.env`はコミットしないため）→(4)Android APKビルド（eas build）→(5)リリースチェック（`BETA_FORCE_PRO_PLAN`=false、ローカル`dist/`を直接公開しない、個人Geminiキーがビルドに混入しないことの最終確認）→(6)QR・フィードバックフォーム。
 - **バンプ範囲の絞り込みは「合計時間ベース」の最小方式のみ実装済み。反復方式への格上げは保留中:** MVPテスト中に「合計時間は足りているはずなのに実際には入らない」という報告があれば、`placementRollover.ts`の`findLowerPriorityTaskIdsToBump()`を1件ずつ再生成・確認する反復方式に格上げすることを検討する。今のところ実装の必要性は確認できていない。
 - **「90分固定・2分割」は分割しきい値の引き上げで根本軽減済み（続報9）。残る調整余地:** 90分ちょうどはまだ45+45に分割される。MVPで不評なら、しきい値をさらに上げる／見積もり側（Geminiプロンプトの「~45–90m」表現やローカルルールの90分）を保守化する、を再検討する。Geminiプロンプト変更は非決定性に注意。
 - **実行フィデリティ動線の強化（UI側、P2）:** 開始→集中→完了をアプリ内で必ず通す動線の強化はまだ未着手。
