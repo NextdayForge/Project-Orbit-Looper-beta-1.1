@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { ReplanProposal } from '../../intelligence/planner/replanDiff';
+import { modalAnimation } from '../common/modalAnimation';
 import { Theme, useTheme, useThemedStyles } from '../../theme';
 
 interface ReplanProposalModalProps {
@@ -36,7 +37,7 @@ export function ReplanProposalModal({
   }
 
   return (
-    <Modal visible={isOpen} animationType="fade" transparent onRequestClose={onClose}>
+    <Modal visible={isOpen} animationType={modalAnimation('fade')} transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.card}>
           <Text style={styles.kicker}>{kicker}</Text>

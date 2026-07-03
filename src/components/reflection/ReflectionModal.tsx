@@ -18,6 +18,7 @@ import { Reflection } from '../../types/reflection';
 import { SaveReflectionInput } from '../../hooks/useScheduleActions';
 import { formatDateHeader, toDateKey } from '../../utils/time';
 import { BottomSheetDragHandle } from '../common/BottomSheetDragHandle';
+import { modalAnimation } from '../common/modalAnimation';
 import { useBottomSheetDismiss } from '../common/useBottomSheetDismiss';
 import { Theme, useTheme, useThemedStyles } from '../../theme';
 
@@ -162,7 +163,7 @@ export function ReflectionModal({
   );
 
   return (
-    <Modal visible={isOpen} animationType="slide" transparent onRequestClose={tryClose}>
+    <Modal visible={isOpen} animationType={modalAnimation('slide')} transparent onRequestClose={tryClose}>
       <View style={styles.overlay}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={tryClose} />
         <KeyboardAvoidingView

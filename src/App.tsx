@@ -8,6 +8,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { FullScreenSafeArea } from './components/common/FullScreenSafeArea';
+import { modalAnimation } from './components/common/modalAnimation';
 
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LooperBootScreen } from './components/boot/LooperBootScreen';
@@ -760,7 +761,7 @@ function AppContent() {
 
       <Modal
         visible={ui.isFocusOpen}
-        animationType="slide"
+        animationType={modalAnimation('slide')}
         onRequestClose={ui.closeFocus}
         presentationStyle="fullScreen"
       >

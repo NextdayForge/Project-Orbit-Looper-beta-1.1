@@ -249,7 +249,24 @@ P1最後の残件「90分固定・2分割」の根本対応に着手した。ま
 - 「2分割」の根本対応は、見積もりルールではなく分割判定ロジック（`splittable`のしきい値）を引き上げる方式を採用。46〜89分は1コマ、90分以上のみ分割。出どころ非依存でGemini/ローカル両方に効く。
 - 見積もり90分そのものの引き下げ（選択肢C）は、Geminiが非決定的で効果が安定しないため今回は見送り。実際にMVPで「90分ちょうどの分割」がまだ不評なら、しきい値をさらに上げるか、見積もり側の保守化を再検討する。
 
+### 続報10（同スレッドの続き・LT配布に向けたWeb版検証とモーダル凍結バグ修正）
+
+**新しい大目標が確定した: 来週金曜（2026-07-10頃）のライトニングトークでアプリを配布する。** 配布チャネルはWeb版（Vercel）+ Android APKの二本立て（TestFlightはリードタイム的に見送り）。ユーザーの依頼は「計画を全部達成する。今すべきことを提案して実行」で、リスクの高い順に消化する方針とした。タスクリスト: (1)Web版ビルド検証 (2)workers/プロキシ確認 (3)Vercelデプロイ (4)Android APKビルド (5)リリース前チェック (6)LT配布素材。
+
+**(1)Web版ビルド検証を実施し、完了した。** `npx expo export --platform web`は一発成功（633モジュール、dist/生成）。ローカルサーバー+ブラウザ自動操作で検証したところ、**全モーダルが「見えるのに一切タップできない」凍結バグ**を発見した。原因: react-native-webのModalは`animationend`イベントが発火するまでポータル全体を`pointer-events:none`にしたまま待つ実装だが、アニメーションが無効なブラウザ（`prefers-reduced-motion`強制環境・一部組み込み/ヘッドレスブラウザ）ではCSSアニメーションが走らずanimationendが永遠に来ない。オンボーディングモーダルは初回起動で必ず出るため、該当環境では**アプリ全体が操作不能**になる。アクセシビリティ設定利用者が実際に踏み得る実バグと判断し修正した。
+
+修正: `src/components/common/modalAnimation.ts`を新設（`modalAnimation(type)` = Webでは常に`'none'`を返す。`'none'`はイベント待ちをしないため凍結しない。ネイティブは従来のslide/fadeのまま）。App.tsx/AiScheduleModal/ScheduleAdjustModal/CoachModal/EventEditor/OnboardingModal/LooperPickerSheet/ReflectionModal/ReplanProposalModal/RoutineSettingsViewの全10箇所の`animationType`を差し替えた。トレードオフとしてWebではモーダルの開閉アニメーションが無くなるが、確実に動くことを優先した。
+
+修正後のブラウザ検証で**コアループがWebで一周動くことを確認**: オンボーディング完走（次へ×2→はじめる）→カレンダー日表示→＋からEventEditorでタスク作成→タイムラインにセッション配置（時刻・優先度・遅延ラベル表示）→TodayホームにDayType判定（NORMAL DAY）・容量計算・次のセッション表示→ふりかえりモーダル表示→リロード後もlocalStorageで全データ永続。**AI機能はWeb書き出しビルドでは`__DEV__`=falseになるため個人キーが自動無効化される**ことも確認（`isLooperDevClient()`ガード。「AIコーチ（未設定）」表示）。つまりWeb/APK配布でAIを使うにはプロキシが必須という設計が実装レベルで裏付けられた。
+
+付随修正: `vercel.json`が旧Vite時代（my-calendar-app由来）の設定（`npm run build`/`framework: vite`）のままで、そのままVercelに繋ぐと確実にビルド失敗する状態だったため、`npx expo export --platform web`/`outputDirectory: dist`に更新した。ルートの`index.html`（`/src/main.tsx`参照）も旧Vite遺物だが、Expoのexportは自前のdist/index.htmlを生成するため実害なしと判断し今回は放置。
+
+注意: ローカルで`expo export`すると`.env`の個人Geminiキーがバンドルに焼き込まれる（`env: export EXPO_PUBLIC_GEMINI_API_KEY`とログに出る）。前述の`__DEV__`ガードで実行時には使われないが、**ローカル生成のdist/を手動で公開しないこと**（キー文字列自体は含まれる）。Vercel上でビルドすれば`.env`が無いので混入しない。リリースチェック項目に追加。
+
+検証はtsc 0エラー・31スイート167件全成功・lint 0エラー26警告（ベースライン維持）。
+
 ### 次回への申し送り
+- **LT配布の残タスク:** (2)workers/looper-gemini-proxyのデプロイ（実装済みコードあり、wrangler login+secretsはユーザーのCloudflareアカウント作業）→(3)Vercelデプロイ（プロキシURL/トークンを環境変数注入）→(4)Android APKビルド（eas build）→(5)リリースチェック（`BETA_FORCE_PRO_PLAN`=false、ローカルdist/を公開しない）→(6)QR・フィードバックフォーム。
 - **バンプ範囲の絞り込みは「合計時間ベース」の最小方式のみ実装済み。反復方式への格上げは保留中:** MVPテスト中に「合計時間は足りているはずなのに実際には入らない」という報告があれば、`placementRollover.ts`の`findLowerPriorityTaskIdsToBump()`を1件ずつ再生成・確認する反復方式に格上げすることを検討する。今のところ実装の必要性は確認できていない。
 - **「90分固定・2分割」は分割しきい値の引き上げで根本軽減済み（続報9）。残る調整余地:** 90分ちょうどはまだ45+45に分割される。MVPで不評なら、しきい値をさらに上げる／見積もり側（Geminiプロンプトの「~45–90m」表現やローカルルールの90分）を保守化する、を再検討する。Geminiプロンプト変更は非決定性に注意。
 - **実行フィデリティ動線の強化（UI側、P2）:** 開始→集中→完了をアプリ内で必ず通す動線の強化はまだ未着手。

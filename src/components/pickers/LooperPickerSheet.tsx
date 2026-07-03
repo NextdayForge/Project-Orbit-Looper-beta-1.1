@@ -2,6 +2,7 @@ import React from 'react';
 import { Animated, Modal, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Theme, useThemedStyles } from '../../theme';
 import { BottomSheetDragHandle } from '../common/BottomSheetDragHandle';
+import { modalAnimation } from '../common/modalAnimation';
 import { useBottomSheetDismiss } from '../common/useBottomSheetDismiss';
 import { makePickerSheetStyles } from './pickerStyles';
 
@@ -26,7 +27,7 @@ export function LooperPickerSheet({
   const { translateY, panHandlers } = useBottomSheetDismiss(visible, onCancel);
 
   return (
-    <Modal transparent animationType="slide" visible={visible} onRequestClose={onCancel}>
+    <Modal transparent animationType={modalAnimation('slide')} visible={visible} onRequestClose={onCancel}>
       <View style={styles.overlay}>
         <Pressable style={styles.backdrop} onPress={onCancel} />
         <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]} {...panHandlers}>

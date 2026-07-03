@@ -19,6 +19,7 @@ import { AiTaskInput, PRIORITY_SHORT, TASK_DURATION_OPTIONS, TaskPriority } from
 import { parseBulkLines } from '../presentation/calendar/bulkTaskInput';
 import { formatDateHeader } from '../utils/time';
 import { BottomSheetDragHandle } from './common/BottomSheetDragHandle';
+import { modalAnimation } from './common/modalAnimation';
 import { useBottomSheetDismiss } from './common/useBottomSheetDismiss';
 import { Theme, useTheme, useThemedStyles } from '../theme';
 
@@ -119,7 +120,7 @@ export function AiScheduleModal({
   const { translateY, panHandlers } = useBottomSheetDismiss(isOpen, handleClose, isLoading);
 
   return (
-    <Modal visible={isOpen} animationType="slide" transparent onRequestClose={handleClose}>
+    <Modal visible={isOpen} animationType={modalAnimation('slide')} transparent onRequestClose={handleClose}>
       <View style={styles.overlay}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={handleClose} />
         <KeyboardAvoidingView

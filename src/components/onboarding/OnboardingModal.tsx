@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { APP_NAME } from '../../config/brand';
 import { FullScreenSafeArea } from '../common/FullScreenSafeArea';
+import { modalAnimation } from '../common/modalAnimation';
 import { Theme, useThemedStyles } from '../../theme';
 
 interface OnboardingSlide {
@@ -63,7 +64,7 @@ export function OnboardingModal({ isOpen, onComplete }: OnboardingModalProps) {
   return (
     <Modal
       visible={isOpen}
-      animationType="fade"
+      animationType={modalAnimation('fade')}
       presentationStyle="fullScreen"
       onRequestClose={skip}
     >

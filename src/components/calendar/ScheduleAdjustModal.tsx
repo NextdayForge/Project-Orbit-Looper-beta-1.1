@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BottomSheetDragHandle } from '../common/BottomSheetDragHandle';
+import { modalAnimation } from '../common/modalAnimation';
 import { useBottomSheetDismiss } from '../common/useBottomSheetDismiss';
 import { Theme, useThemedStyles } from '../../theme';
 
@@ -46,7 +47,7 @@ export function ScheduleAdjustModal({
   const { translateY, panHandlers } = useBottomSheetDismiss(isOpen, tryClose, isLoading);
 
   return (
-    <Modal visible={isOpen} animationType="slide" transparent onRequestClose={tryClose}>
+    <Modal visible={isOpen} animationType={modalAnimation('slide')} transparent onRequestClose={tryClose}>
       <View style={styles.overlay}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={tryClose} />
         <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]} {...panHandlers}>

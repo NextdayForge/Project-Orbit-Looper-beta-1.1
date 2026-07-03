@@ -22,6 +22,7 @@ import { EditableCalendarEvent } from '../presentation/calendar';
 import { durationLabel, minutesToTime } from '../utils/time';
 import { LooperDatePickerField, LooperDurationPickerField, LooperTimePickerField } from './pickers';
 import { BottomSheetDragHandle } from './common/BottomSheetDragHandle';
+import { modalAnimation } from './common/modalAnimation';
 import { useBottomSheetDismiss } from './common/useBottomSheetDismiss';
 import { Theme, useTheme, useThemedStyles } from '../theme';
 
@@ -99,7 +100,7 @@ export function EventEditor({
   };
 
   return (
-    <Modal visible={isOpen} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={isOpen} animationType={modalAnimation('slide')} transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.overlay}

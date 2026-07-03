@@ -24,6 +24,7 @@ import {
 } from '../../utils/skipDates';
 import { LooperDatePickerField, LooperTimePickerField } from '../pickers';
 import { FullScreenSafeArea } from '../common/FullScreenSafeArea';
+import { modalAnimation } from '../common/modalAnimation';
 import { Theme, useTheme, useThemedStyles } from '../../theme';
 
 interface RoutineSettingsViewProps {
@@ -164,7 +165,7 @@ export function RoutineSettingsView({
   };
 
   return (
-    <Modal visible={isOpen} animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
+    <Modal visible={isOpen} animationType={modalAnimation('slide')} onRequestClose={onClose} presentationStyle="fullScreen">
       <FullScreenSafeArea style={styles.screen}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} hitSlop={12}>
