@@ -157,12 +157,13 @@ export async function resolveAiTaskInputs(
           userModel.estimationFactor
         );
         resolved.push(
-          scaledMinutes === existing.estimatedMinutes
+          scaledMinutes === existing.estimatedMinutes && existing.splittable === false
             ? existing
             : await gateway.updateTask({
                 ...existing,
                 estimatedMinutes: scaledMinutes,
-                splittable: scaledMinutes > userModel.focusLength,
+                // A user-picked duration means "one sitting of this length" — never auto-split.
+                splittable: false,
                 updatedAt: new Date().toISOString(),
               })
         );
@@ -212,7 +213,8 @@ export async function resolveAiTaskInputs(
       estimatedMinutes: scaledMinutes,
       category: estimate.category,
       status: 'inbox',
-      splittable: scaledMinutes > userModel.focusLength,
+      // A user-picked duration means "one sitting of this length" — never auto-split.
+      splittable: userSpecifiedMinutes != null ? false : scaledMinutes > userModel.focusLength,
     });
     resolved.push(task);
     created += 1;

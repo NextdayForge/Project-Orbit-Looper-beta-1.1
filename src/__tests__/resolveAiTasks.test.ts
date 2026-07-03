@@ -190,4 +190,46 @@ describe('resolveAiTaskInputs', () => {
     expect(gateway.updateTask).not.toHaveBeenCalled();
     expect(resolved[0]).toBe(existingTask);
   });
+
+  it('keeps a 60-minute new task as a single (non-splittable) block instead of auto-splitting at focusLength', async () => {
+    const inputs: AiTaskInput[] = [{ title: '買い物', priority: 3, estimatedMinutes: 60 }];
+    const gateway = makeFakeGateway();
+
+    const { resolved } = await resolveAiTaskInputs(inputs, '2026-07-03', [], [], 30, gateway);
+
+    expect(resolved[0].estimatedMinutes).toBe(60);
+    expect(resolved[0].splittable).toBe(false);
+  });
+
+  it('forces splittable to false when re-specifying 60 minutes for an existing task, even if unchanged in duration', async () => {
+    const existingTask = makeExistingTask({ estimatedMinutes: 60, splittable: true });
+    const inputs: AiTaskInput[] = [{ title: '勉強', priority: 3, estimatedMinutes: 60 }];
+    const gateway = makeFakeGateway();
+
+    const { resolved } = await resolveAiTaskInputs(
+      inputs,
+      '2026-07-03',
+      [existingTask],
+      [],
+      30,
+      gateway
+    );
+
+    expect(gateway.updateTask).toHaveBeenCalledTimes(1);
+    expect(resolved[0].estimatedMinutes).toBe(60);
+    expect(resolved[0].splittable).toBe(false);
+  });
+
+  it('still splits a 90-minute AI-estimated (unspecified duration) task at focusLength (regression guard)', async () => {
+    mockEstimateBatch.mockResolvedValue(
+      new Map([['プログラミング課題', { estimatedMinutes: 90, category: 'work', source: 'local' }]])
+    );
+    const inputs: AiTaskInput[] = [{ title: 'プログラミング課題', priority: 3 }];
+    const gateway = makeFakeGateway();
+
+    const { resolved } = await resolveAiTaskInputs(inputs, '2026-07-03', [], [], 30, gateway);
+
+    expect(resolved[0].estimatedMinutes).toBe(90);
+    expect(resolved[0].splittable).toBe(true);
+  });
 });
