@@ -16,6 +16,15 @@ import { CalendarEditorGateway } from './CalendarEditorAdapter';
 
 const REUSABLE_STATUSES = new Set<TaskStatus>(['inbox', 'ready']);
 
+/**
+ * AI-estimated tasks auto-split only when they span at least this many focus blocks.
+ * Below the threshold the task stays one session, so a moderate estimate no longer
+ * fragments into awkward pieces (e.g. 60min → 45+15). Source-independent: applies to
+ * both Gemini and local estimates. User-picked durations never split (handled separately).
+ * See SESSION_LOG 2026-07-02 (split-threshold approach) for the rationale and alternatives.
+ */
+const AUTO_SPLIT_MIN_FOCUS_BLOCKS = 2;
+
 
 
 export { normalizeTaskTitle };
@@ -213,8 +222,11 @@ export async function resolveAiTaskInputs(
       estimatedMinutes: scaledMinutes,
       category: estimate.category,
       status: 'inbox',
-      // A user-picked duration means "one sitting of this length" — never auto-split.
-      splittable: userSpecifiedMinutes != null ? false : scaledMinutes > userModel.focusLength,
+      // User-picked durations never split; AI estimates split only when genuinely long
+      // (>= AUTO_SPLIT_MIN_FOCUS_BLOCKS focus blocks), keeping moderate tasks in one piece.
+      splittable:
+        userSpecifiedMinutes == null &&
+        scaledMinutes >= userModel.focusLength * AUTO_SPLIT_MIN_FOCUS_BLOCKS,
     });
     resolved.push(task);
     created += 1;

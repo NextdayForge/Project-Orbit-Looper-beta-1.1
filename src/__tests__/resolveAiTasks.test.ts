@@ -232,4 +232,29 @@ describe('resolveAiTaskInputs', () => {
     expect(resolved[0].estimatedMinutes).toBe(90);
     expect(resolved[0].splittable).toBe(true);
   });
+
+  it('keeps a 60-minute AI-estimated task in one piece (below the auto-split threshold)', async () => {
+    mockEstimateBatch.mockResolvedValue(
+      new Map([['開発タスク', { estimatedMinutes: 60, category: 'work', source: 'local' }]])
+    );
+    const inputs: AiTaskInput[] = [{ title: '開発タスク', priority: 3 }];
+    const gateway = makeFakeGateway();
+
+    const { resolved } = await resolveAiTaskInputs(inputs, '2026-07-03', [], [], 30, gateway);
+
+    expect(resolved[0].estimatedMinutes).toBe(60);
+    expect(resolved[0].splittable).toBe(false);
+  });
+
+  it('does not split an AI-estimated task at exactly one focus block (45 minutes)', async () => {
+    mockEstimateBatch.mockResolvedValue(
+      new Map([['読書', { estimatedMinutes: 45, category: 'study', source: 'local' }]])
+    );
+    const inputs: AiTaskInput[] = [{ title: '読書', priority: 3 }];
+    const gateway = makeFakeGateway();
+
+    const { resolved } = await resolveAiTaskInputs(inputs, '2026-07-03', [], [], 30, gateway);
+
+    expect(resolved[0].splittable).toBe(false);
+  });
 });
