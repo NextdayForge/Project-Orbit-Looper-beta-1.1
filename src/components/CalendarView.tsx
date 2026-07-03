@@ -19,6 +19,7 @@ import {
   runAiDayPlan,
   resolveAiTaskInputs,
   buildRolloverNotice,
+  resolveBedtimeHint,
   toEditableModel,
   toggleCompleted,
 } from '../presentation/calendar';
@@ -235,10 +236,13 @@ export function CalendarView(props: CalendarViewProps) {
         const taskIds = resolved.map((task) => task.id);
         const outcome = await runAiDayPlan(scheduleDate, plannerGateway, { taskIds });
         closeAiModal();
+        const bedtimeHint = resolveBedtimeHint(settings, scheduleDate);
         if (outcome.result === 'skipped_empty') {
           setScheduleNotice({
             tone: 'warning',
-            text: 'スケジュールを配置する場所がありませんでした。タスクは登録済みですが、今日の予定には入っていません。',
+            text:
+              bedtimeHint ??
+              'スケジュールを配置する場所がありませんでした。タスクは登録済みですが、今日の予定には入っていません。',
           });
           if (!isDayView) {
             openDayView(scheduleDate);
@@ -248,7 +252,7 @@ export function CalendarView(props: CalendarViewProps) {
           setScheduleNotice({
             tone: rollover ? 'info' : 'success',
             text: rollover
-              ? `${rollover} Today タブで今日の流れを確認できます。`
+              ? `${bedtimeHint ?? rollover} Today タブで今日の流れを確認できます。`
               : 'スケジュールを生成しました。Today タブで今日の流れを確認できます。',
           });
           if (!isDayView && rollover) {
@@ -262,7 +266,17 @@ export function CalendarView(props: CalendarViewProps) {
         });
       }
     },
-    [closeAiModal, editorGateway, isDayView, openDayView, plannerGateway, selectedDate, settings.defaultDurationMinutes, today]
+    [
+      closeAiModal,
+      editorGateway,
+      isDayView,
+      openDayView,
+      plannerGateway,
+      selectedDate,
+      settings.defaultDurationMinutes,
+      settings.sleepMinutes,
+      today,
+    ]
   );
 
   const handleDismissNotice = useCallback(() => {

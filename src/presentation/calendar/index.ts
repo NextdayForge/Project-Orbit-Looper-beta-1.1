@@ -33,6 +33,8 @@ export { syncTasksAfterDayPlan } from './syncTasksAfterDayPlan';
 
 export { buildRolloverNotice, runPlacementWithRollover, getUnplacedTaskIds } from './placementRollover';
 
+export { resolveBedtimeHint } from './bedtimeHint';
+
 export {
   beginDrag,
   cancel,
