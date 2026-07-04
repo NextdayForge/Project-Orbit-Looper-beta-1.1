@@ -455,17 +455,18 @@ export function SettingsView({
             </View>
             {apiKeyMessage ? <Text style={styles.dataMessage}>{apiKeyMessage}</Text> : null}
             <Text style={styles.betaNote}>
-              キーは
-              <Text
-                style={styles.linkText}
-                onPress={() => {
-                  void Linking.openURL('https://aistudio.google.com/apikey');
-                }}
-              >
-                {' '}Google AI Studio{' '}
-              </Text>
-              で無料取得できます。この端末（ブラウザ）内にのみ保存され、外部には送信しません。
+              キーは以下のリンクから無料取得できます。この端末（ブラウザ）内にのみ保存され、外部には送信しません。
             </Text>
+            <TouchableOpacity
+              onPress={() => {
+                void Linking.openURL('https://aistudio.google.com/apikey');
+              }}
+              activeOpacity={0.7}
+              hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+              style={styles.aiStudioLinkRow}
+            >
+              <Text style={styles.aiStudioLinkText}>Google AI Studio を開く ›</Text>
+            </TouchableOpacity>
           </View>
         </View>
       ) : null}
@@ -741,4 +742,11 @@ const makeStyles = (theme: Theme) =>
     apiKeyBtnText: { fontSize: 14, fontWeight: '700', color: theme.accent },
     apiKeyBtnPrimary: { backgroundColor: theme.accent },
     apiKeyBtnPrimaryText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
+    aiStudioLinkRow: { alignSelf: 'flex-start', paddingVertical: 4 },
+    aiStudioLinkText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: theme.accent,
+      textDecorationLine: 'underline',
+    },
   });
