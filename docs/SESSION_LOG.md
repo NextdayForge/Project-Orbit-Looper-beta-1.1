@@ -20,8 +20,12 @@ react-native-webの`Linking.openURL()`はWeb実装上`window.open(url, target, '
 ### 決定事項
 - Web版で外部リンクを開く際は、`Linking.openURL()`（`window.open`経由）ではなく、react-native-webの`Text`の`href`/`hrefAttrs`（本物の`<a>`タグ）を使う。ポップアップブロッカーの影響を受けないため。この方針は今後同様のWeb限定の外部リンクにも適用する。
 
+### 続報（ユーザー承認を得てpush実施）
+
+ユーザーが承認したため push した。GitHub連携によりVercelが自動で本番デプロイ（Ready、33秒）。https://orbit-looper-red.vercel.app が最新デプロイを指していることを確認し、公開バンドルに`aistudio.google.com/apikey`の文字列（＝`<a href>`化した変更）が含まれていることも確認した。今回はWeb版のみの変更（`isWeb`条件内のUI）でAPKには影響しないため、APK再ビルドは行っていない。
+
 ### 次回への申し送り
-- **push・APK再ビルドは未実施。** 今回はWeb版のみの変更（`isWeb`条件内のUI）だが、ユーザーの確認・承認を待ってからpush（Web版自動デプロイ）を行う。APK再ビルドは今回の変更が影響しないため必須ではないが、配布資料を最新コミット基準に揃えるならAPKも再ビルドする。
+- 特になし。本番Web版でGoogle AI Studioリンクが実際に開けるか、ユーザーの実機での最終確認が望ましい。
 
 ### 続報（チャットのURLリンク破損の原因判明、および「Google AI Studio」リンクの改善）
 
