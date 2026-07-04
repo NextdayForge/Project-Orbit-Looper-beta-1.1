@@ -32,17 +32,20 @@ const makeStyles = (theme: Theme) =>
       alignSelf: 'stretch',
       alignItems: 'center',
       justifyContent: 'center',
+      // Taller, full-width grab area so the "pull down to close" gesture is
+      // easy to start anywhere across the top of the sheet, not just on the bar.
+      paddingVertical: 6,
     },
     headerContent: {
       alignSelf: 'stretch',
       width: '100%',
     },
     handle: {
-      width: 36,
+      width: 44,
       height: 5,
-      backgroundColor: theme.secondary,
+      backgroundColor: theme.textTertiary,
       borderRadius: 3,
-      marginTop: 10,
-      marginBottom: 10,
+      marginTop: 8,
+      marginBottom: 8,
     },
   });

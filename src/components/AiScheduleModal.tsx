@@ -133,7 +133,7 @@ export function AiScheduleModal({
       <View style={styles.overlay}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={handleClose} />
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 4 : 0}
           style={styles.sheetAvoider}
         >
@@ -143,7 +143,7 @@ export function AiScheduleModal({
                 <Text style={styles.title}>AIスケジュール作成</Text>
                 <Text style={styles.date}>{formatDateHeader(targetDate)}</Text>
                 <Text style={styles.desc}>
-                  1行に1タスク。行のどこかに「30分」で所要時間、「!高」で優先度（!最高 !高 !普通 !低 !最低、全角「！」もOK）を付けられます。下に解釈結果が出るので確認できます（未指定はAIが推定／優先度は普通）。
+                  1行に1タスク。行のどこかに「30分」で所要時間、「！高」で優先度（！最高 ／ ！高 ／ ！普通 ／ ！低 ／ ！最低。半角「!」でもOK）を付けられます。下に解釈結果が出るので確認できます（未指定はAIが推定／優先度は普通）。
                 </Text>
               </BottomSheetDragHandle>
 
@@ -156,7 +156,7 @@ export function AiScheduleModal({
               <Text style={styles.sectionLabel}>タスクを入力</Text>
               <TextInput
                 style={styles.bulkInput}
-                placeholder={'例:\n英語の過去問 30分 !高\nプログラミング課題\n買い物 !低'}
+                placeholder={'例:\n英語の過去問 30分 ！高\nプログラミング課題\n買い物 ！低'}
                 placeholderTextColor={theme.textTertiary}
                 value={bulkText}
                 onChangeText={setBulkText}
