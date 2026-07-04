@@ -38,6 +38,10 @@
 - (2)(3)ともユーザー端末に届けるには**APK再ビルドが必要**（(3)はネイティブManifest変更）。Web版にも(2)のJS修正を反映するにはpush（＝Vercel自動デプロイ）が必要。コードはコミット済みだが、**APK再ビルドとpush/デプロイはユーザー承認後に実施**する。
 - 再ビルド後は`docs/lt-assets/`のAndroid QR/リンクを新ビルドに差し替えること。
 
+### 続報（②③反映のAPK再ビルド完了・配布資料を最新化）
+
+①（繰り越し強化）②（フォーカスタイマー）③（allowBackup=false）をすべて含めてpush（Web版は自動デプロイ済み）とAndroid APK再ビルドを実施。新ビルドURL: `https://expo.dev/accounts/asuforge/projects/orbit-looper/builds/13d16f12-6d66-4c35-b2ed-9c88f41fb53c`。`docs/lt-assets/`のAndroid QR・`LT_HANDOUT.md`のリンク・当日チェックリスト（繰り越し確認・フォーカスタイマー確認の項目を追加）を新ビルドに合わせて更新した。それより前のビルド（`a5866f87…`／`e4b08ae5…`）は配布しないよう明記済み。
+
 
 
 別デバイス（D:\ayosh機）でセッション開始。「現在の進捗状況を教えて」という依頼を受け、pull・ベースライン確認（変化なし、31スイート167件）の上で07-02付けの一連のSESSION_LOGエントリ（続報1〜12、LT配布に向けたバグ修正・Vercelデプロイ・Android APKビルドまで）を要約して報告した。

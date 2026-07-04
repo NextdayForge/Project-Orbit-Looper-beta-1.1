@@ -7,9 +7,9 @@
 | チャネル | 対象 | リンク | QR |
 |---|---|---|---|
 | **Web版** | 全員（iPhoneでもブラウザで使える） | https://orbit-looper-red.vercel.app | ![](qr-web.png) |
-| **Android APK** | Androidのみ（通知など実機機能が使える） | [インストールページ](https://expo.dev/accounts/asuforge/projects/orbit-looper/builds/a5866f87-86ca-4b67-ba16-28f90b0a2b32) | ![](qr-android.png) |
+| **Android APK** | Androidのみ（通知など実機機能が使える） | [インストールページ](https://expo.dev/accounts/asuforge/projects/orbit-looper/builds/13d16f12-6d66-4c35-b2ed-9c88f41fb53c) | ![](qr-android.png) |
 
-> ⚠️ APKは 2026-07-04 の再ビルド（`a5866f87…`）が最新。旧ビルド（`e4b08ae5…`）は誤ったプロキシトークンが焼き込まれておりAIが動かないので配布しないこと。
+> ⚠️ APKは 2026-07-04 の再ビルド（`13d16f12…`）が最新。これには繰り越し強化・フォーカスタイマー修正・再インストール時のデータ残存修正がすべて含まれる。それより前のビルド（`a5866f87…`／`e4b08ae5…`）は配布しないこと。
 
 ## AI の使い方（チャネルで違う）
 
@@ -33,6 +33,8 @@
 ## 配布前チェック（当日）
 
 - [ ] Web版が実際に開けるか、当日会場のWi-Fiで再確認（`https://orbit-looper-red.vercel.app`）
-- [ ] Android実機で**新APK（`a5866f87…`）**をインストール〜起動〜AIコーチ応答まで1回通す（旧APKは配布しない）
+- [ ] Android実機で**新APK（`13d16f12…`）**をインストール〜起動〜AIコーチ応答まで1回通す（旧APKは配布しない）
+- [ ] 前日以前の未完了タスクが翌日以降に正しく繰り越され、過去日に残り続けないか確認
+- [ ] フォーカスモードに入った瞬間からタイマーがカウントダウンを始めるか確認（予定時刻を待たない）
 - [ ] Web版で自分のGeminiキーを入れてAIが有効化されるか1回確認
 - [ ] `BETA_FORCE_PRO_PLAN=true` のままであること（ベータ中は全員AI機能を使える設定）
