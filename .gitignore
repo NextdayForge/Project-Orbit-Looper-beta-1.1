@@ -13,3 +13,4 @@ web-build
 # Legacy Vite (optional web)
 vite.config.ts
 tsconfig.node.json
+.env*

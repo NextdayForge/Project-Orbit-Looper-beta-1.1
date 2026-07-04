@@ -289,8 +289,27 @@ secretsの設定は値をチャットに一切出さない方法で実施した:
 - 秘密情報（APIキー等）を含むファイルは、値を伏せる操作（grep/cut等でパイプ）を徹底し、`Read`ツールでの直接閲覧は避ける。今回の事故を教訓として厳格化。
 - secret値の設定・`.env`編集など「値そのものを扱う操作」は、可能な限りユーザー自身の手元操作に切り出す（Claude側が値を見ない設計を優先する）。
 
+### 続報12（別デバイス・D:\ayosh機での続き・Vercelデプロイ＋Android APKビルド）
+
+前回の申し送り「(3)Vercelデプロイ→(4)Android APKビルド」に、別デバイス（D:\ayosh機）のセッションで着手した。まずpull・ベースライン再確認（tsc 0エラー・31スイート167件・lint 0エラー26警告、変化なし）を行い、Vercel/EASの認証状態を確認したところ両方ログイン済みだった（Vercel: `nextdayforge-3999`、EAS: `asuforge`、`app.json`の`extra.eas.projectId`と一致）。
+
+**Vercelデプロイ:** プロジェクト未リンク（`.vercel`ディレクトリなし）だったため`vercel link --yes --project orbit-looper`で新規作成。この際GitHubリポジトリ（`NextdayForge/Project-Orbit-Looper-beta-1.1`）が自動連携され、以後pushで自動デプロイされる状態になった。AIプロキシ用の2つの環境変数（`EXPO_PUBLIC_LOOPER_AI_PROXY_URL`/`EXPO_PUBLIC_LOOPER_AI_BETA_TOKEN`）をVercel（Production/Preview両方）に設定する必要があったが、この端末には`.env`が存在しなかった（各端末ローカルのみでgit管理外のため）。値を一切表示せずに済む方法として、`eas env:pull preview --non-interactive`でEASのpreview環境変数をスクラッチ用の一時ファイルに取得し、`grep | cut`でシェル内完結のまま`vercel env add`にパイプで渡し、直後に一時ファイルを削除した（値が会話ログに一切出ない設計。続報11のキー漏洩事故を踏まえた徹底）。`vercel --prod`でデプロイ実行し、**https://orbit-looper-red.vercel.app** で公開した。ビルドはVercel側のリモート環境で実行され（この端末にもリモート側にも`.env`が存在しないため）、個人Geminiキー混入のリスクがないことを確認した。`vercel link`が`.gitignore`に`.env*`を自動追記した（既存の`.env`/`.env.local`/`*.local`と一部重複するが実害なし）。
+
+その後Chrome拡張が未接続だったため、ブラウザでの実地確認（続報10で行ったオンボーディング〜コアループの動作確認）は今回**実施できていない**。`curl`でのHTTPステータス（200）とHTML内容の目視確認のみ。**次回、Chrome拡張が使えるようになったら実地確認を推奨。**
+
+**Android APKビルド:** `npm run build:android:preview`相当の`eas build --platform android --profile preview --non-interactive`をバックグラウンドで実行し成功。preview環境変数（プロキシURL・トークン）は自動的にビルドに読み込まれた。インストールリンク（QR付き）: **https://expo.dev/accounts/asuforge/projects/orbit-looper/builds/e4b08ae5-b5ac-448d-8d28-d28a52dfeca7**
+
+付随修正: `docs/CLOUD_AI_PROXY.md`と`docs/BETA_ANDROID_APK.md`に、旧プロジェクト名時代の絶対パス（`D:\ayosh\Project-Orbit-Loop`、`-beta-1.1`無し）がハードコードされたまま残っていたのを発見し、プロジェクトルート相対の汎用的な手順に修正した（どの端末・どの配置場所でもコピペで動くように）。
+
+### 決定事項（続報12分）
+- Vercelプロジェクトは`orbit-looper`としてGitHub連携込みで新規作成。以後`main`へのpushで自動デプロイされる（Production環境の環境変数は設定済み）。
+- 秘密値をVercelに設定する際は、既存の`.env`を直接読まず、`eas env:pull`で取得した一時ファイルからパイプで渡し、直後に削除する手順を徹底した。今後も同様の「値を会話ログに出さない」手順をこの種の作業のデフォルトとする。
+- ドキュメント内の絶対パス（`D:\ayosh\Project-Orbit-Loop`）はプロジェクト名変更前の名残と判明したため、相対パスに修正した。同様の残存箇所が他にないか、気づいた時点で都度直す。
+
 ### 次回への申し送り
-- **LT配布の残タスク（更新）:** (2)workers/looper-gemini-proxyのデプロイは完了（`https://looper-gemini-proxy.nextdayforge.workers.dev`、secrets設定済み、Geminiキーはローテーション済みの新キー）。次は(3)Vercelデプロイ（プロキシURL/トークンはVercel側の環境変数として別途設定が必要、`.env`はコミットしないため）→(4)Android APKビルド（eas build）→(5)リリースチェック（`BETA_FORCE_PRO_PLAN`=false、ローカル`dist/`を直接公開しない、個人Geminiキーがビルドに混入しないことの最終確認）→(6)QR・フィードバックフォーム。
+- **LT配布の残タスク（更新）:** (1)Web版ビルド検証・(2)プロキシデプロイ・(3)Vercelデプロイ・(4)Android APKビルドまで完了。次は**(5)リリース前チェックの最終確認**（`BETA_FORCE_PRO_PLAN`は意図的に`true`のまま維持済み＝ベータ配布中は全員Pro、公開GA時にfalseへ戻すのはさらに先の話）と**(6)QR・フィードバックフォームの準備**。
+- **Vercel版の実地ブラウザ確認がまだ済んでいない。** Chrome拡張が使える環境で、続報10と同様にオンボーディング〜コアループ〜ふりかえりの一連が問題なく動くか、本番URL（https://orbit-looper-red.vercel.app）で確認すること。
+- Android APK（https://expo.dev/accounts/asuforge/projects/orbit-looper/builds/e4b08ae5-b5ac-448d-8d28-d28a52dfeca7）も実機での動作確認が未実施。
 - **バンプ範囲の絞り込みは「合計時間ベース」の最小方式のみ実装済み。反復方式への格上げは保留中:** MVPテスト中に「合計時間は足りているはずなのに実際には入らない」という報告があれば、`placementRollover.ts`の`findLowerPriorityTaskIdsToBump()`を1件ずつ再生成・確認する反復方式に格上げすることを検討する。今のところ実装の必要性は確認できていない。
 - **「90分固定・2分割」は分割しきい値の引き上げで根本軽減済み（続報9）。残る調整余地:** 90分ちょうどはまだ45+45に分割される。MVPで不評なら、しきい値をさらに上げる／見積もり側（Geminiプロンプトの「~45–90m」表現やローカルルールの90分）を保守化する、を再検討する。Geminiプロンプト変更は非決定性に注意。
 - **実行フィデリティ動線の強化（UI側、P2）:** 開始→集中→完了をアプリ内で必ず通す動線の強化はまだ未着手。
