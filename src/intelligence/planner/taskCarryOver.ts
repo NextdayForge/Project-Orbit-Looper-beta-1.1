@@ -1,4 +1,4 @@
-import { Session, isSessionCompleted } from '../../types/session';
+import { Session, isMutableScheduleSession, isSessionCompleted } from '../../types/session';
 import { Task } from '../../types/task';
 
 function isIncompleteCarryOverSession(session: Session): boolean {
@@ -42,6 +42,34 @@ export function buildPastIncompleteRescheduleBatch(
       status: 'rescheduled' as const,
       rescheduledAt: now,
     }));
+}
+
+/**
+ * Of the carry-over task IDs, the ones that now have an active (mutable) session
+ * on `dateKey` or any later date — i.e. they've been re-placed forward (today, or
+ * rolled/bumped to a future day). Only these should have their stale past-day
+ * sessions rescheduled, so a task is never left lingering on a past date once it
+ * has a new home going forward. (Guarding on "re-homed" avoids dropping a task
+ * that couldn't be placed anywhere.)
+ */
+export function selectRehomedCarryOverTaskIds(
+  sessions: Session[],
+  dateKey: string,
+  carryOverTaskIds: string[]
+): string[] {
+  const carrySet = new Set(carryOverTaskIds);
+  const rehomed = new Set<string>();
+  for (const session of sessions) {
+    if (
+      session.date >= dateKey &&
+      session.taskId != null &&
+      carrySet.has(session.taskId) &&
+      isMutableScheduleSession(session)
+    ) {
+      rehomed.add(session.taskId);
+    }
+  }
+  return [...rehomed];
 }
 
 export function titlesForTaskIds(taskIds: string[], tasks: Task[]): string[] {

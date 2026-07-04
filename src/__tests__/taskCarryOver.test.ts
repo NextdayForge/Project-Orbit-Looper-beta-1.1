@@ -1,6 +1,7 @@
 import {
   buildPastIncompleteRescheduleBatch,
   getIncompleteTaskIdsBeforeDate,
+  selectRehomedCarryOverTaskIds,
 } from '../intelligence/planner/taskCarryOver';
 import { makeSession } from './fixtures';
 
@@ -33,5 +34,37 @@ describe('taskCarryOver', () => {
     expect(batch[0].id).toBe('past-1');
     expect(batch[0].status).toBe('rescheduled');
     expect(batch[0].rescheduledAt).toBe('2026-06-28T09:00:00.000Z');
+  });
+
+  describe('selectRehomedCarryOverTaskIds', () => {
+    const carryOver = ['placedToday', 'rolledTomorrow', 'stuckPast'];
+
+    it('treats a task rolled to a FUTURE day as re-homed (so its past session gets cleared)', () => {
+      const sessions = [
+        // placed today
+        makeSession({ taskId: 'placedToday', date: TODAY }),
+        makeSession({ taskId: 'placedToday', date: '2026-06-27' }),
+        // rolled to tomorrow — previously left its past session lingering
+        makeSession({ taskId: 'rolledTomorrow', date: '2026-06-29' }),
+        makeSession({ taskId: 'rolledTomorrow', date: '2026-06-26' }),
+        // only has a past session, no forward home → NOT re-homed, don't drop it
+        makeSession({ taskId: 'stuckPast', date: '2026-06-25' }),
+      ];
+
+      expect(selectRehomedCarryOverTaskIds(sessions, TODAY, carryOver).sort()).toEqual([
+        'placedToday',
+        'rolledTomorrow',
+      ]);
+    });
+
+    it('ignores non-carry-over tasks and non-mutable forward sessions', () => {
+      const sessions = [
+        makeSession({ taskId: 'other', date: '2026-06-29' }),
+        makeSession({ taskId: 'placedToday', date: TODAY, status: 'rescheduled' }),
+        makeSession({ taskId: 'rolledTomorrow', date: '2026-06-29', status: 'completed', completed: true }),
+      ];
+
+      expect(selectRehomedCarryOverTaskIds(sessions, TODAY, carryOver)).toEqual([]);
+    });
   });
 });

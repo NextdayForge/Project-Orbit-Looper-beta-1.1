@@ -10,6 +10,7 @@ import { resolveMorningReplanTaskIds } from '../intelligence/planner/morningTask
 import {
   buildPastIncompleteRescheduleBatch,
   getIncompleteTaskIdsBeforeDate,
+  selectRehomedCarryOverTaskIds,
   titlesForTaskIds,
 } from '../intelligence/planner/taskCarryOver';
 import { sessionRepository, taskRepository } from '../repositories';
@@ -19,7 +20,7 @@ import { useDayPlan } from './useDayPlan';
 import { useLearning } from './useLearning';
 import { MiddayAdjustmentResult } from '../types/dayPlan';
 import { Reflection } from '../types/reflection';
-import { Session, isMutableScheduleSession } from '../types/session';
+import { Session } from '../types/session';
 import { Task } from '../types/task';
 
 async function resolveReplanTaskIds(
@@ -48,18 +49,11 @@ async function finalizeCarryOverFromPast(
   }
 
   const { tasks, sessions } = await reload();
-  const placedOnDate = new Set(
-    sessions
-      .filter(
-        (session) =>
-          session.date === dateKey &&
-          session.taskId != null &&
-          isMutableScheduleSession(session)
-      )
-      .map((session) => session.taskId as string)
-  );
-
-  const carriedIds = carryOverTaskIds.filter((taskId) => placedOnDate.has(taskId));
+  // Clear the stale past-day session for every carry-over task that now has a
+  // home on today OR any later date (placed today, or rolled/bumped to tomorrow).
+  // Previously this only fired for tasks placed *today*, so a task rolled to
+  // tomorrow kept its active past session and lingered on the past date forever.
+  const carriedIds = selectRehomedCarryOverTaskIds(sessions, dateKey, carryOverTaskIds);
   if (carriedIds.length === 0) {
     return [];
   }
