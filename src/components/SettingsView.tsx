@@ -457,16 +457,24 @@ export function SettingsView({
             <Text style={styles.betaNote}>
               キーは以下のリンクから無料取得できます。この端末（ブラウザ）内にのみ保存され、外部には送信しません。
             </Text>
-            <TouchableOpacity
-              onPress={() => {
-                void Linking.openURL('https://aistudio.google.com/apikey');
-              }}
-              activeOpacity={0.7}
-              hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
-              style={styles.aiStudioLinkRow}
+            {/*
+              A real <a> element (via Text's web-only href/hrefAttrs, supported
+              by react-native-web's runtime but not reflected in RN's own
+              TextProps types — hence the cast), not Linking.openURL()/
+              window.open(): some browsers' popup blockers silently swallow
+              script-triggered window.open() even from a genuine tap, but
+              never block a native anchor click.
+            */}
+            <Text
+              {...({
+                accessibilityRole: 'link',
+                href: 'https://aistudio.google.com/apikey',
+                hrefAttrs: { target: 'blank', rel: 'noopener' },
+              } as React.ComponentProps<typeof Text>)}
+              style={[styles.aiStudioLinkRow, styles.aiStudioLinkText]}
             >
-              <Text style={styles.aiStudioLinkText}>Google AI Studio を開く ›</Text>
-            </TouchableOpacity>
+              Google AI Studio を開く ›
+            </Text>
           </View>
         </View>
       ) : null}
