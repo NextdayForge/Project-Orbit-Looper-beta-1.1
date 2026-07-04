@@ -67,6 +67,20 @@ describe('parseBulkLines', () => {
       expect(tasks).toEqual([{ title: '高校の宿題', priority: 3 }]);
     });
 
+    it('accepts the full-width "！" marker (Japanese IME default)', () => {
+      expect(parseBulkLines('英語の過去問 ！最高')).toEqual([{ title: '英語の過去問', priority: 1 }]);
+      expect(parseBulkLines('買い物！低')).toEqual([{ title: '買い物', priority: 4 }]);
+    });
+
+    it('accepts the marker with no leading space', () => {
+      expect(parseBulkLines('英語の過去問!高')).toEqual([{ title: '英語の過去問', priority: 2 }]);
+    });
+
+    it('does not match a marker mid-word (token not at a word boundary)', () => {
+      // "高" here is immediately followed by "揚", so it is not a priority hint.
+      expect(parseBulkLines('終わった!高揚感')).toEqual([{ title: '終わった!高揚感', priority: 3 }]);
+    });
+
     it('extractPriorityHint leaves the line untouched when there is no hint', () => {
       expect(extractPriorityHint('プログラミング課題')).toEqual({ title: 'プログラミング課題' });
     });

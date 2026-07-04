@@ -23,7 +23,7 @@ export function extractDurationHint(line: string): { title: string; estimatedMin
 }
 
 // Explicit "!高" style priority hint. Longest tokens first so "最高"/"最低"/"普通" match
-// before their single-character substrings ("高"/"低"/"普"). Requires the "!" marker
+// before their single-character substrings ("高"/"低"/"普"). Requires the "!"/"！" marker
 // (rather than a bare word) so an ordinary task title containing e.g. "高" is never
 // mistaken for a priority hint.
 const PRIORITY_ALIASES: [string, TaskPriority][] = [
@@ -39,8 +39,11 @@ const PRIORITY_ALIASES: [string, TaskPriority][] = [
   ['4', 4],
   ['5', 5],
 ];
+// Accept both the half-width "!" and the full-width "！" (Japanese IME default), with or
+// without a leading space, so "英語 !高" / "英語!高" / "英語 ！最高" all work. The trailing
+// lookahead keeps it at a word boundary so mid-word matches (e.g. "終わった!高揚感") are ignored.
 const BULK_PRIORITY_PATTERN = new RegExp(
-  `(?:^|\\s)!(${PRIORITY_ALIASES.map(([token]) => token).join('|')})(?=\\s|$)`
+  `[!！](${PRIORITY_ALIASES.map(([token]) => token).join('|')})(?=\\s|$)`
 );
 
 export function extractPriorityHint(line: string): { title: string; priority?: TaskPriority } {

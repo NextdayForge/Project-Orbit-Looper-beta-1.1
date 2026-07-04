@@ -284,6 +284,11 @@ const makeStyles = (theme: Theme) =>
   },
   sheetBody: {
     paddingHorizontal: 20,
+    // Must be able to shrink within the sheet's maxHeight (90%) so the inner
+    // ScrollView gets a bounded height and actually scrolls — without this the
+    // body grows to its full content height and the footer (削除/キャンセル/保存)
+    // overflows off-screen and becomes unreachable.
+    flexShrink: 1,
   },
   sheetTitle: {
     fontSize: 20,

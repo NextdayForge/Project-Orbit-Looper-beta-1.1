@@ -15,7 +15,13 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AiTaskInput, PRIORITY_SHORT, TASK_DURATION_OPTIONS, TaskPriority } from '../types/schedule';
+import {
+  AiTaskInput,
+  PRIORITY_LABELS,
+  PRIORITY_SHORT,
+  TASK_DURATION_OPTIONS,
+  TaskPriority,
+} from '../types/schedule';
 import { parseBulkLines } from '../presentation/calendar/bulkTaskInput';
 import { formatDateHeader } from '../utils/time';
 import { BottomSheetDragHandle } from './common/BottomSheetDragHandle';
@@ -83,10 +89,13 @@ export function AiScheduleModal({
     setTasks((prev) => (prev.length <= 1 ? prev : prev.filter((t) => t.id !== id)));
   };
 
+  // Live parse of the bulk textarea — drives both the payload and the preview list,
+  // so the user can see exactly how each line was interpreted (title / priority / duration).
+  const bulkParsed = useMemo(() => parseBulkLines(bulkText), [bulkText]);
+
   const payload = useMemo((): AiTaskInput[] => {
-    const fromBulk = parseBulkLines(bulkText);
-    if (fromBulk.length > 0) {
-      return fromBulk;
+    if (bulkParsed.length > 0) {
+      return bulkParsed;
     }
 
     return tasks
@@ -96,7 +105,7 @@ export function AiScheduleModal({
         ...(task.estimatedMinutes ? { estimatedMinutes: task.estimatedMinutes } : {}),
       }))
       .filter((task) => task.title.length > 0);
-  }, [bulkText, tasks]);
+  }, [bulkParsed, tasks]);
 
   const handleGenerate = () => {
     if (isLoading) {
@@ -134,7 +143,7 @@ export function AiScheduleModal({
                 <Text style={styles.title}>AIスケジュール作成</Text>
                 <Text style={styles.date}>{formatDateHeader(targetDate)}</Text>
                 <Text style={styles.desc}>
-                  1行に1タスクで入力すると早いです。「30分」で所要時間、「!高」で優先度（!最高・!高・!普通・!低・!最低）も指定できます（未指定はAIが推定/普通になります）。
+                  1行に1タスク。行のどこかに「30分」で所要時間、「!高」で優先度（!最高 !高 !普通 !低 !最低、全角「！」もOK）を付けられます。下に解釈結果が出るので確認できます（未指定はAIが推定／優先度は普通）。
                 </Text>
               </BottomSheetDragHandle>
 
@@ -156,6 +165,25 @@ export function AiScheduleModal({
                 textAlignVertical="top"
                 blurOnSubmit={false}
               />
+
+              {bulkParsed.length > 0 && (
+                <View style={styles.preview}>
+                  <Text style={styles.previewLabel}>解釈結果（この内容で配置します）</Text>
+                  {bulkParsed.map((task, index) => (
+                    <View key={`${task.title}-${index}`} style={styles.previewRow}>
+                      <Text style={styles.previewTitle} numberOfLines={1}>
+                        {task.title}
+                      </Text>
+                      <View style={styles.previewTags}>
+                        <Text style={styles.previewTag}>優先度: {PRIORITY_LABELS[task.priority]}</Text>
+                        <Text style={styles.previewTag}>
+                          {task.estimatedMinutes ? `${task.estimatedMinutes}分` : 'AI推定'}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
 
               <TouchableOpacity
                 style={styles.advancedToggle}
@@ -345,6 +373,35 @@ const makeStyles = (theme: Theme) =>
       color: theme.text,
       minHeight: 140,
       lineHeight: 22,
+    },
+    preview: {
+      marginTop: 10,
+      backgroundColor: theme.bg,
+      borderRadius: theme.radius.sm,
+      borderWidth: 1,
+      borderColor: theme.separator,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      gap: 8,
+    },
+    previewLabel: { fontSize: 11, fontWeight: '700', color: theme.textSecondary },
+    previewRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    previewTitle: { flex: 1, fontSize: 14, color: theme.text, fontWeight: '600' },
+    previewTags: { flexDirection: 'row', gap: 6 },
+    previewTag: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: theme.accent,
+      backgroundColor: theme.accentSoft,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 999,
+      overflow: 'hidden',
     },
     advancedToggle: {
       alignItems: 'center',
