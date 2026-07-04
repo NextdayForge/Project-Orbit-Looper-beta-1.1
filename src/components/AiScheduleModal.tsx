@@ -134,7 +134,7 @@ export function AiScheduleModal({
                 <Text style={styles.title}>AIスケジュール作成</Text>
                 <Text style={styles.date}>{formatDateHeader(targetDate)}</Text>
                 <Text style={styles.desc}>
-                  1行に1タスクで入力すると早いです。末尾に「30分」のように書くと所要時間を指定できます（未指定はAIが推定します）。
+                  1行に1タスクで入力すると早いです。「30分」で所要時間、「!高」で優先度（!最高・!高・!普通・!低・!最低）も指定できます（未指定はAIが推定/普通になります）。
                 </Text>
               </BottomSheetDragHandle>
 
@@ -147,7 +147,7 @@ export function AiScheduleModal({
               <Text style={styles.sectionLabel}>タスクを入力</Text>
               <TextInput
                 style={styles.bulkInput}
-                placeholder={'例:\n英語の過去問 30分\nプログラミング課題\n買い物'}
+                placeholder={'例:\n英語の過去問 30分 !高\nプログラミング課題\n買い物 !低'}
                 placeholderTextColor={theme.textTertiary}
                 value={bulkText}
                 onChangeText={setBulkText}
@@ -164,9 +164,10 @@ export function AiScheduleModal({
                   setShowAdvanced((prev) => !prev);
                 }}
                 disabled={isLoading}
+                activeOpacity={0.75}
               >
                 <Text style={styles.advancedToggleText}>
-                  {showAdvanced ? '詳細入力を閉じる' : 'または1件ずつ詳細設定（優先度）'}
+                  {showAdvanced ? '詳細入力を閉じる ▴' : '1件ずつ詳細設定（優先度・所要時間）▾'}
                 </Text>
               </TouchableOpacity>
 
@@ -345,8 +346,18 @@ const makeStyles = (theme: Theme) =>
       minHeight: 140,
       lineHeight: 22,
     },
-    advancedToggle: { paddingVertical: 12, alignItems: 'center' },
-    advancedToggleText: { fontSize: 12, fontWeight: '600', color: theme.textTertiary },
+    advancedToggle: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 10,
+      marginTop: 10,
+      marginBottom: 4,
+      borderRadius: theme.radius.sm,
+      borderWidth: 1,
+      borderColor: theme.accentSoft,
+      backgroundColor: theme.accentSoft,
+    },
+    advancedToggleText: { fontSize: 13, fontWeight: '700', color: theme.accent },
     taskCard: {
       backgroundColor: theme.bg,
       borderRadius: theme.radius.sm,
