@@ -2,15 +2,18 @@ import React, { useState } from 'react';
 import {
   Alert,
   Linking,
+  Platform,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import Constants from 'expo-constants';
 import { AppSettings } from '../types/schedule';
+import { isGeminiConfigured, maskGeminiApiKey } from '../infrastructure/gemini/resolveGeminiConfig';
 import { minutesToTime } from '../utils/time';
 import { LooperDurationPickerField } from './pickers';
 import { Theme, useTheme, useThemedStyles } from '../theme';
@@ -94,6 +97,28 @@ export function SettingsView({
   const displayPlan = BETA_FORCE_PRO_PLAN ? 'pro' : looperPlan;
   const [dataMessage, setDataMessage] = useState<string | null>(null);
   const [dataBusy, setDataBusy] = useState(false);
+
+  const isWeb = Platform.OS === 'web';
+  const savedGeminiKey = settings.geminiApiKey?.trim() ?? '';
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [apiKeyMessage, setApiKeyMessage] = useState<string | null>(null);
+
+  const handleSaveApiKey = () => {
+    const trimmed = apiKeyInput.trim();
+    if (!trimmed) {
+      setApiKeyMessage('キーを入力してください。');
+      return;
+    }
+    onUpdate({ geminiApiKey: trimmed });
+    setApiKeyInput('');
+    setApiKeyMessage('保存しました。AI 機能が使えるようになります。');
+  };
+
+  const handleClearApiKey = () => {
+    onUpdate({ geminiApiKey: undefined });
+    setApiKeyInput('');
+    setApiKeyMessage('キーを削除しました。');
+  };
 
   const cloudAiStatusDesc = (() => {
     if (aiEnabled && isLooperAiProxyConfigured()) {
@@ -388,6 +413,63 @@ export function SettingsView({
         </View>
       </View>
 
+      {isWeb ? (
+        <View style={styles.card}>
+          <View style={styles.betaBody}>
+            <Text style={styles.rowLabel}>Gemini API キー（Web版）</Text>
+            <Text style={[styles.rowDesc, { marginTop: 4 }]}>
+              Web版では AI 機能にご自身の Gemini API キーが必要です。
+              {savedGeminiKey
+                ? `　現在: ${maskGeminiApiKey(savedGeminiKey)}（${
+                    isGeminiConfigured(settings) ? '有効' : '無効'
+                  }）`
+                : '　未設定'}
+            </Text>
+            <TextInput
+              style={styles.apiKeyInput}
+              value={apiKeyInput}
+              onChangeText={setApiKeyInput}
+              placeholder={savedGeminiKey ? '新しいキーで置き換える' : 'AIza... を貼り付け'}
+              placeholderTextColor={theme.textSecondary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+            />
+            <View style={styles.apiKeyActions}>
+              <TouchableOpacity
+                style={[styles.apiKeyBtn, styles.apiKeyBtnPrimary]}
+                onPress={handleSaveApiKey}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.apiKeyBtnPrimaryText}>保存</Text>
+              </TouchableOpacity>
+              {savedGeminiKey ? (
+                <TouchableOpacity
+                  style={styles.apiKeyBtn}
+                  onPress={handleClearApiKey}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.apiKeyBtnText}>削除</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            {apiKeyMessage ? <Text style={styles.dataMessage}>{apiKeyMessage}</Text> : null}
+            <Text style={styles.betaNote}>
+              キーは
+              <Text
+                style={styles.linkText}
+                onPress={() => {
+                  void Linking.openURL('https://aistudio.google.com/apikey');
+                }}
+              >
+                {' '}Google AI Studio{' '}
+              </Text>
+              で無料取得できます。この端末（ブラウザ）内にのみ保存され、外部には送信しません。
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
       <Text style={styles.groupTitle}>生活リズム</Text>
       <TouchableOpacity style={styles.card} onPress={onOpenRoutines} activeOpacity={0.8}>
         <View style={styles.row}>
@@ -639,4 +721,24 @@ const makeStyles = (theme: Theme) =>
     },
     betaBody: { padding: 14, gap: 10 },
     betaNote: { fontSize: 12, lineHeight: 18, color: theme.textTertiary },
+    apiKeyInput: {
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.separator,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 14,
+      color: theme.text,
+      backgroundColor: theme.bg,
+    },
+    apiKeyActions: { flexDirection: 'row', gap: 10 },
+    apiKeyBtn: {
+      paddingHorizontal: 16,
+      paddingVertical: 9,
+      borderRadius: 8,
+      backgroundColor: theme.accentSoft,
+    },
+    apiKeyBtnText: { fontSize: 14, fontWeight: '700', color: theme.accent },
+    apiKeyBtnPrimary: { backgroundColor: theme.accent },
+    apiKeyBtnPrimaryText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
   });

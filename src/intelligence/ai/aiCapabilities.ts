@@ -56,10 +56,19 @@ export function getCloudAiUnavailableTitle(): string {
   return `${APP_AI_LABEL} は利用できません`;
 }
 
+/** True on web (react-native-web); false on native and in the Node test env. */
+function isWebRuntime(): boolean {
+  return typeof document !== 'undefined';
+}
+
 /** User-facing hint when cloud Gemini is not reachable (entitlement alone is not enough). */
 export function getCloudAiUnavailableMessage(settings?: Partial<AppSettings>): string {
   if (isGeminiConfigured(settings)) {
     return '';
+  }
+
+  if (isWebRuntime()) {
+    return `Web版では ${APP_AI_LABEL} を使うために、ご自身の Gemini API キーが必要です。設定 → AI で入力してください（キーはこの端末内にのみ保存されます）。`;
   }
 
   if (isLooperDevClient()) {

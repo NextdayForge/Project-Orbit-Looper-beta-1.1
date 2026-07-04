@@ -11,7 +11,16 @@ describe('resolveGeminiConfig', () => {
   const originalProxyToken = process.env.EXPO_PUBLIC_LOOPER_AI_BETA_TOKEN;
   const originalDev = (global as { __DEV__?: boolean }).__DEV__;
 
+  function setWebRuntime(on: boolean): void {
+    if (on) {
+      (global as { document?: unknown }).document = {};
+    } else {
+      delete (global as { document?: unknown }).document;
+    }
+  }
+
   afterEach(() => {
+    setWebRuntime(false);
     if (originalGeminiKey === undefined) {
       delete process.env.EXPO_PUBLIC_GEMINI_API_KEY;
     } else {
@@ -77,5 +86,32 @@ describe('resolveGeminiConfig', () => {
 
   it('masks api keys for display', () => {
     expect(maskGeminiApiKey('AIzaSyABCDEF123456789')).toMatch(/^AIza••••/);
+  });
+
+  it('web: uses the user-provided settings key', () => {
+    setWebRuntime(true);
+    (global as { __DEV__?: boolean }).__DEV__ = false;
+    const settings = { geminiApiKey: 'AIzaUserOwnKey123456' } as Partial<AppSettings>;
+    expect(resolveGeminiApiKey(settings)).toBe('AIzaUserOwnKey123456');
+    expect(isGeminiConfigured(settings)).toBe(true);
+  });
+
+  it('web: never uses the shared proxy, and is unconfigured without a user key', () => {
+    setWebRuntime(true);
+    process.env.EXPO_PUBLIC_LOOPER_AI_PROXY_URL = 'https://proxy.example.com';
+    process.env.EXPO_PUBLIC_LOOPER_AI_BETA_TOKEN = 'beta-token';
+    delete process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+    (global as { __DEV__?: boolean }).__DEV__ = false;
+    // proxy is configured, but on web it must be ignored → still not available
+    expect(resolveGeminiApiKey({ looperPlan: 'free' })).toBeUndefined();
+    expect(isGeminiConfigured({ looperPlan: 'free' })).toBe(false);
+  });
+
+  it('web: ignores placeholder user keys', () => {
+    setWebRuntime(true);
+    (global as { __DEV__?: boolean }).__DEV__ = false;
+    expect(
+      isGeminiConfigured({ geminiApiKey: 'your_api_key_here' } as Partial<AppSettings>)
+    ).toBe(false);
   });
 });

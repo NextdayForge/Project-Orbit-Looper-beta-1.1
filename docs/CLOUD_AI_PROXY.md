@@ -30,14 +30,25 @@ npm run deploy
 
 デプロイ後に表示される URL（例: `https://looper-gemini-proxy.<account>.workers.dev`）を控える。
 
-## 2. アプリ側の環境変数
+## 2. 配布チャネル別のキー戦略（重要）
+
+Gemini キーの出どころは **配布先で分ける**（`resolveGeminiConfig.ts` が `Platform`＝webかどうかで自動判定）:
+
+| チャネル | AI のキー | 理由 |
+|---|---|---|
+| **APK（ネイティブ）** | 開発者のキー（プロキシ経由・Worker内に秘匿） | 配布先が限定的なので開発者が費用負担してよい |
+| **Web版** | **各ユーザー自身の Gemini API キー**（設定→AIで入力、端末内保存） | 公開URLはプロキシ token がバンドルから抽出され濫用・課金されうるため、共有 token を web には載せない |
+
+→ **Web の Vercel には プロキシ用の環境変数を設定しない**（設定するとバンドルに token が焼き込まれる）。プロキシ変数は EAS（APK）だけに設定する。
+
+## 2b. アプリ側の環境変数（APK / ネイティブ用）
 
 ビルド時に Expo へ渡します（**リポジトリにコミットしない**）。
 
 | 変数 | 内容 |
 |------|------|
 | `EXPO_PUBLIC_LOOPER_AI_PROXY_URL` | Worker の URL（末尾スラッシュなし） |
-| `EXPO_PUBLIC_LOOPER_AI_BETA_TOKEN` | Worker の `BETA_TOKEN` と同じ値 |
+| `EXPO_PUBLIC_LOOPER_AI_BETA_TOKEN` | Worker の `BETA_TOKEN` と**完全一致**する値（不一致だと Worker が 401 を返し、AI が黙ってローカルにフォールバックする） |
 
 ### ローカル開発（expo start）
 

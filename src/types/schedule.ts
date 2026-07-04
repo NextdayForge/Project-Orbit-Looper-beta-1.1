@@ -54,6 +54,12 @@ export interface AppSettings {
   themeMode: 'light' | 'dark';
   /** Looper subscription tier — cloud AI requires `pro` + Looper backend. */
   looperPlan?: LooperPlan;
+  /**
+   * User-supplied Gemini API key. Web only: the public web build carries no
+   * shared proxy token, so each user brings their own key. Ignored on native
+   * (APK uses the Looper proxy). Stored on-device only.
+   */
+  geminiApiKey?: string;
   /** First-run onboarding completed. */
   onboardingCompleted?: boolean;
 }
