@@ -19,8 +19,12 @@
 - チャットでURLを共有する際は、直後に別テキストを続ける場合は必ずスペース/改行を入れる（Punycode誤変換によるリンク破損を防ぐため）。
 - 外部リンクは、地の文に埋め込むのではなく独立したタップ領域（`TouchableOpacity`＋下線）として提供する方が実機での確実性・視認性ともに高い。
 
+### 続報（ユーザー承認を得てpush・APK再ビルド・配布資料更新を実施）
+
+ユーザーが承認したため、push（Web版自動デプロイ）とAndroid APK再ビルドを実行した。Web版は https://orbit-looper-red.vercel.app が最新デプロイ（`ngk3p4yg0`）を指していることを確認済み。Android APK新ビルド: `https://expo.dev/accounts/asuforge/projects/orbit-looper/builds/c730ba40-2043-487c-9ea6-39860a88255e`。`docs/lt-assets/`のQR・`LT_HANDOUT.md`のリンクを新ビルドに合わせて更新した（Google AI Studioリンクの改善はWeb版UIのみのためAPK自体への実質影響はないが、配布資料は最新コミット基準に揃えた）。
+
 ### 次回への申し送り
-- **push・APK再ビルドは未実施。** Google AI Studioリンクの改善はコミット済みだが、ユーザーの確認・承認を待ってからWeb反映（push）とAPK再ビルドを行う（このリンクはWeb版のみ表示されるため、APKへの影響は無い）。
+- 特になし。全ての変更がpush・APK再ビルドまで反映済み。
 
 ### 続報（Web版リンクの疎通調査、および一括入力への優先度指定・詳細設定ボタンの視認性改善）
 
