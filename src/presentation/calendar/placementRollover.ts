@@ -1,6 +1,6 @@
 import { getRemainingMinutesForPlacement } from '../../intelligence/planner/placementTaskSelector';
 import { DayPlan } from '../../types/dayPlan';
-import { Session, isActivePlacementSession } from '../../types/session';
+import { Session, isActivePlacementSession, isMutableScheduleSession } from '../../types/session';
 import { Task } from '../../types/task';
 import { addDays, toDateKey } from '../../utils/time';
 
@@ -134,6 +134,109 @@ function buildBumpedTodayRescheduleBatch(
       status: 'rescheduled' as const,
       rescheduledAt: now,
     }));
+}
+
+/** Minutes actually placed on `dateKey` for each of `taskIds`, from the current session list. */
+export function sumPlacedMinutesByTask(
+  sessions: Session[],
+  dateKey: string,
+  taskIds: string[]
+): Map<string, number> {
+  const taskSet = new Set(taskIds);
+  const totals = new Map<string, number>();
+  for (const session of sessions) {
+    if (
+      session.date === dateKey &&
+      session.taskId != null &&
+      taskSet.has(session.taskId) &&
+      isMutableScheduleSession(session)
+    ) {
+      const minutes = session.endMinutes - session.startMinutes;
+      totals.set(session.taskId, (totals.get(session.taskId) ?? 0) + minutes);
+    }
+  }
+  return totals;
+}
+
+/**
+ * When a full replan pulls a task's work forward onto `dateKey` (e.g. after
+ * finishing today early and asking the AI to rebuild today's plan), any of that
+ * task's already-existing sessions on FUTURE dates must be freed by exactly the
+ * amount that was actually placed today — otherwise the same work is tracked
+ * twice (today's new session AND the old future one) and the future session
+ * never goes away.
+ *
+ * Future sessions are treated as whole, indivisible units (earliest first):
+ * only as many of them as fit within what was placed today get freed
+ * (`rescheduled`). Anything left over — because today didn't have room for it —
+ * is untouched and stays exactly where it was on its future date. This mirrors
+ * `findLowerPriorityTaskIdsToBump`'s minutes-only, whole-session approach.
+ */
+export function selectFutureSessionsToFree(
+  sessions: Session[],
+  dateKey: string,
+  taskIds: string[],
+  placedMinutesByTask: Map<string, number>
+): Session[] {
+  const taskSet = new Set(taskIds);
+  const futureByTask = new Map<string, Session[]>();
+
+  for (const session of sessions) {
+    if (
+      session.date > dateKey &&
+      session.taskId != null &&
+      taskSet.has(session.taskId) &&
+      isMutableScheduleSession(session)
+    ) {
+      const list = futureByTask.get(session.taskId) ?? [];
+      list.push(session);
+      futureByTask.set(session.taskId, list);
+    }
+  }
+
+  const toFree: Session[] = [];
+  for (const [taskId, futureSessions] of futureByTask) {
+    const budget = placedMinutesByTask.get(taskId) ?? 0;
+    if (budget <= 0) {
+      continue;
+    }
+
+    const sorted = [...futureSessions].sort(
+      (a, b) => a.date.localeCompare(b.date) || a.startMinutes - b.startMinutes
+    );
+
+    let used = 0;
+    for (const session of sorted) {
+      const minutes = session.endMinutes - session.startMinutes;
+      if (used + minutes > budget + 5) {
+        break;
+      }
+      toFree.push(session);
+      used += minutes;
+    }
+  }
+
+  return toFree;
+}
+
+/**
+ * Builds the rescheduled-session batch to persist after a full replan, freeing
+ * future sessions covered by what was placed on `dateKey` (see
+ * `selectFutureSessionsToFree`). Returns `[]` when nothing needs freeing.
+ */
+export function buildFutureSessionFreeBatch(
+  sessions: Session[],
+  dateKey: string,
+  taskIds: string[],
+  now: string
+): Session[] {
+  const placedMinutesByTask = sumPlacedMinutesByTask(sessions, dateKey, taskIds);
+  const toFree = selectFutureSessionsToFree(sessions, dateKey, taskIds, placedMinutesByTask);
+  return toFree.map((session) => ({
+    ...session,
+    status: 'rescheduled' as const,
+    rescheduledAt: now,
+  }));
 }
 
 export function buildRolloverNotice(outcome: PlanApplyOutcome): string | null {

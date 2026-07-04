@@ -7,6 +7,39 @@
 
 ## 2026-07-04
 
+### 続報（「今日の予定をAIで作り直す」実行時に明日のタスクが複製される不具合の調査・修正）
+
+ユーザーから「今日のタスクをすべて完了し、その後に予定を調整のボタンを押すと次の日の予定を今日に持ってくるのではなく、複製されて今日に配置され明日のタスクは消えない」という報告を受けた。まずコード変更せず、ボタン→ハンドラの経路を追って原因を特定した。
+
+**再現経路の特定:** 今日のセッションが全て`completed`だと`TodayView.tsx`の`canShiftFromNow`（`sessions.some(isMutableScheduleSession)`）が`false`になり、「今から順に並べる」（shift）は非表示。ユーザーが選べるのは「今日の予定をAIで作り直す」（`ScheduleAdjustModal`→`onFullReplan`→`useDayOrchestrator.ts`の`applyFullReplanPreview`）のみ。この経路は`previewFullReplan`→`resolveReplanTaskIds`→（明示指定が無ければ）`resolveMorningReplanTaskIds`を使う。
+
+**原因は2箇所の相互作用:**
+1. [`placementTaskSelector.ts`](../src/intelligence/planner/placementTaskSelector.ts)の`scheduledMinutesForTask()`が、他日のセッションのうち**完了済みだけ**を「消化済み」として差し引く。明日の`planned`（未完了）セッションは差し引かれないため、そのタスクは「全く未配置」と誤判定され、今日の配置候補としてフル時間で選ばれる。
+2. [`useScheduleActions.ts`](../src/hooks/useScheduleActions.ts)の`resolveSessionsToReschedule()`（`replaceTaskSessions`モード）は`session.date === date`（＝今日）のセッションしか置き換え対象にしない。明日のセッションは別日付なので一切触られず、そのまま残る。
+
+結果: 今日に新規配置（①）＋明日の元セッションは残置（②）＝複製。
+
+**ユーザーへの確認と合意した設計:** 「今日に入る分だけ持ってくる。残りは明日に置いたまま」という要件を実装するにあたり、既存セッションを日をまたいで分数単位で分割する（例: 90分セッションのうち45分だけを今日に移し、残り45分だけ明日に残す）のは実装が重く、既存コードの慣習（`findLowerPriorityTaskIdsToBump`等はセッション単位で移動、分単位の分割はしない）とも合わないと判断。**「既存の未来日セッションを分割不可能な単位として扱い、今日に実際に配置された分でどこまで丸ごと解放できるかを判定する」**方式を採用（早い日付・時刻のセッションから優先）。今日に収まらなかった分（丸ごと解放できない残りのセッション）は一切手を加えず明日にそのまま残る。優先度に応じた今日/明日の振り分け自体は既存のPlacementEngine/Gemini配置がそのまま担当（変更なし）。
+
+**実装:** `presentation/calendar/placementRollover.ts`に3つの純粋関数を追加。
+- `sumPlacedMinutesByTask(sessions, dateKey, taskIds)`: 今日実際に配置された分をタスクごとに集計。
+- `selectFutureSessionsToFree(sessions, dateKey, taskIds, placedMinutesByTask)`: 未来日の`isMutableScheduleSession`なセッションを日付・時刻の早い順に走査し、今日配置された分（+5分の許容誤差、`getUnplacedTaskIds`と同じ慣習）に収まる分だけ「解放対象」として選ぶ。収まらなくなった時点で打ち切り、以降のセッションには一切触れない。
+- `buildFutureSessionFreeBatch(...)`: 解放対象を`status: 'rescheduled'`にするバッチを構築（第6原則どおり削除ではなく`rescheduled`）。
+
+`useDayOrchestrator.ts`の`applyFullReplanPreview`で、`applyDayPlan`成功後に最新セッションを再取得し、この解放バッチを`sessionRepository.saveMany()`で保存するよう変更。UIへの新規通知は追加していない（既存の`ApplyDayPlanResult`が単純な文字列型のため、通知を追加するには型変更が必要でスコープが広がるため見送り。必要であれば別途対応）。
+
+テストは`placementRollover.test.ts`に6件追加（今日配置分の集計／未来セッションを丸ごと解放／一部だけ解放し残りは非接触で確認／未配置なら何も解放しない／対象外タスク・過去日は無視／`buildFutureSessionFreeBatch`が`rescheduled`バッチを正しく組み、収まらなかったセッションがバッチに含まれないことを確認）。
+
+検証: tsc 0エラー・テスト31スイート183件全成功（+6）・lint 0エラー26警告（不変）。ブラウザでの実地確認は、複数日にまたがるタスク完了状態を人工的に再現する必要があり実務上困難なため、単体テストでロジックの正しさを担保した（データロジックのみで、UI表示コードは変更していない）。
+
+### 決定事項
+- 「今日の予定をAIで作り直す」実行時、未来日にある同タスクの既存セッションは「今日に実際に配置された分だけ、丸ごと単位で解放（rescheduled）」する。分単位でセッションを分割する機能は実装しない（スコープ超過と判断）。
+- この修正は`applyFullReplanPreview`（全AI再計画ボタン）にのみ適用。朝の自動プラン生成（`generateDayPlanAndApply`）や「今から順に並べる」（shift）は今回のバグの再現経路ではないため変更していない。もし同様の複製が朝の自動生成経路でも観測されたら、同じ`buildFutureSessionFreeBatch`を再利用して同様の対応を追加できる。
+
+### 次回への申し送り
+- **push・APK再ビルドは未実施。** コードはコミット済みだが、ユーザーの実機確認・承認を待ってからWeb反映（push）とAPK再ビルドを行う。
+- 朝の自動プラン生成（`generateDayPlanAndApply`）経路でも同様の複製が起きうるか、実機での様子見が必要（起きた場合は同じ関数を再利用して対応）。
+
 ### 続報（①の強化: 過去日にタスクを残さない繰り越しに修正）
 
 前段で「①繰り越しは実装済み」と報告したが、ユーザーから「AIで自動予定を組み替える際、前日以前の未完了タスクも優先度に応じて今日以降へ設定し、過去日にタスクが残りっぱなしにならないようにしてほしい」という強化依頼を受けた。コードを精査した結果、実際に**過去日にセッションが残り続けるバグ**があることが判明した。

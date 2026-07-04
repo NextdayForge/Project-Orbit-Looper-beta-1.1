@@ -1,11 +1,17 @@
 import {
+  buildFutureSessionFreeBatch,
   buildRolloverNotice,
   findLowerPriorityTaskIdsToBump,
   runPlacementWithRollover,
+  selectFutureSessionsToFree,
+  sumPlacedMinutesByTask,
 } from '../presentation/calendar/placementRollover';
 import { DayPlan } from '../types/dayPlan';
 import { Session } from '../types/session';
 import { makeCapacity, makeSession, makeTask } from './fixtures';
+
+const TODAY = '2026-07-04';
+const TOMORROW = '2026-07-05';
 
 describe('placementRollover', () => {
   it('buildRolloverNotice formats bumped and rolled titles', () => {
@@ -195,6 +201,79 @@ describe('placementRollover', () => {
       });
 
       expect(saveSessions).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('pull-forward reconciliation (full replan pulling future work into today)', () => {
+    it('sumPlacedMinutesByTask totals only mutable sessions on the given date for the given tasks', () => {
+      const sessions = [
+        makeSession({ taskId: 'a', date: TODAY, startMinutes: 540, endMinutes: 585 }), // 45 min
+        makeSession({ taskId: 'a', date: TODAY, startMinutes: 600, endMinutes: 630 }), // 30 min
+        makeSession({ taskId: 'a', date: TODAY, startMinutes: 700, endMinutes: 730, status: 'completed', completed: true }), // excluded (completed)
+        makeSession({ taskId: 'b', date: TODAY, startMinutes: 540, endMinutes: 570 }), // not in taskIds
+        makeSession({ taskId: 'a', date: TOMORROW, startMinutes: 540, endMinutes: 585 }), // wrong date
+      ];
+
+      const totals = sumPlacedMinutesByTask(sessions, TODAY, ['a']);
+      expect(totals.get('a')).toBe(75);
+      expect(totals.has('b')).toBe(false);
+    });
+
+    it('frees a future session fully covered by what was placed today', () => {
+      const sessions = [
+        makeSession({ id: 'future-1', taskId: 'a', date: TOMORROW, startMinutes: 540, endMinutes: 630 }), // 90 min
+      ];
+      const placed = new Map([['a', 90]]);
+
+      const toFree = selectFutureSessionsToFree(sessions, TODAY, ['a'], placed);
+      expect(toFree.map((s) => s.id)).toEqual(['future-1']);
+    });
+
+    it('only frees as many whole future sessions as fit the placed budget, leaving the rest untouched', () => {
+      const sessions = [
+        makeSession({ id: 'future-1', taskId: 'a', date: TOMORROW, startMinutes: 540, endMinutes: 585 }), // 45 min, earliest
+        makeSession({ id: 'future-2', taskId: 'a', date: TOMORROW, startMinutes: 600, endMinutes: 645 }), // 45 min
+      ];
+      // Only 45 minutes of task 'a' actually landed today — just enough for one of the two sessions.
+      const placed = new Map([['a', 45]]);
+
+      const toFree = selectFutureSessionsToFree(sessions, TODAY, ['a'], placed);
+      expect(toFree.map((s) => s.id)).toEqual(['future-1']);
+    });
+
+    it('frees nothing when nothing was placed today for that task', () => {
+      const sessions = [
+        makeSession({ id: 'future-1', taskId: 'a', date: TOMORROW }),
+      ];
+      const toFree = selectFutureSessionsToFree(sessions, TODAY, ['a'], new Map());
+      expect(toFree).toEqual([]);
+    });
+
+    it('ignores future sessions for tasks outside taskIds, and past-dated sessions', () => {
+      const sessions = [
+        makeSession({ id: 'other-task', taskId: 'b', date: TOMORROW }),
+        makeSession({ id: 'past', taskId: 'a', date: '2026-07-03' }),
+      ];
+      const toFree = selectFutureSessionsToFree(sessions, TODAY, ['a'], new Map([['a', 999]]));
+      expect(toFree).toEqual([]);
+    });
+
+    it('buildFutureSessionFreeBatch marks the freed sessions rescheduled with a timestamp, without duplicating or losing the leftover', () => {
+      const sessions = [
+        // placed today: 45 min for task 'a'
+        makeSession({ id: 'today-1', taskId: 'a', date: TODAY, startMinutes: 540, endMinutes: 585 }),
+        // tomorrow had 90 min total across two sessions; only one (45 min) is now covered
+        makeSession({ id: 'future-1', taskId: 'a', date: TOMORROW, startMinutes: 540, endMinutes: 585 }),
+        makeSession({ id: 'future-2', taskId: 'a', date: TOMORROW, startMinutes: 600, endMinutes: 645 }),
+      ];
+
+      const batch = buildFutureSessionFreeBatch(sessions, TODAY, ['a'], '2026-07-04T09:00:00.000Z');
+
+      expect(batch).toHaveLength(1);
+      expect(batch[0].id).toBe('future-1');
+      expect(batch[0].status).toBe('rescheduled');
+      expect(batch[0].rescheduledAt).toBe('2026-07-04T09:00:00.000Z');
+      // future-2 (the leftover that didn't fit today) is not in the batch — stays untouched on tomorrow.
     });
   });
 });

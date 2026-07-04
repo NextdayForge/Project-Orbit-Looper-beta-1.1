@@ -5,7 +5,10 @@ import {
   PlannerGateway,
   PlanApplyOutcome,
 } from '../presentation/calendar/CalendarPlannerAdapter';
-import { runPlacementWithRollover } from '../presentation/calendar/placementRollover';
+import {
+  buildFutureSessionFreeBatch,
+  runPlacementWithRollover,
+} from '../presentation/calendar/placementRollover';
 import { resolveMorningReplanTaskIds } from '../intelligence/planner/morningTaskSelector';
 import {
   buildPastIncompleteRescheduleBatch,
@@ -272,6 +275,21 @@ export function useDayOrchestrator() {
         });
 
         if (result === 'applied') {
+          // A full replan can pull a task's work forward from a future day onto
+          // `dateKey` (e.g. finishing today early and asking the AI to rebuild
+          // today). Free exactly the future sessions that are now covered by
+          // what landed today, so the same work isn't tracked on both days —
+          // whatever didn't fit today stays untouched on its future date.
+          const freshSessions = await sessionRepository.getAll();
+          const freeBatch = buildFutureSessionFreeBatch(
+            freshSessions,
+            dateKey,
+            preview.replanTaskIds,
+            new Date().toISOString()
+          );
+          if (freeBatch.length > 0) {
+            await sessionRepository.saveMany(freeBatch);
+          }
           await syncPlannerSnapshot(targetDate);
         } else {
           await reloadFromRepository();
