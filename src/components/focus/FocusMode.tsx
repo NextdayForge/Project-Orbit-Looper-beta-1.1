@@ -13,6 +13,7 @@ import { useFocusMotionGuard } from '../../hooks/useFocusMotionGuard';
 import { Theme, useTheme, useThemedStyles } from '../../theme';
 import { FocusMotionNudge } from './FocusMotionNudge';
 import { FocusCountdown } from './FocusCountdown';
+import { resolveRemainingFocusSeconds } from '../../focus/focusCountdown';
 
 export interface FocusBrief {
   dayType: DayType;
@@ -36,22 +37,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function nowSeconds(): number {
-  const now = new Date();
-  return now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-}
-
-function resolveRemainingSeconds(session: Session, totalSeconds: number): number {
-  const now = nowSeconds();
-  const startSeconds = session.startMinutes * 60;
-  const endSeconds = session.endMinutes * 60;
-
-  if (now < startSeconds) {
-    return totalSeconds;
-  }
-  return clamp(endSeconds - now, 0, totalSeconds);
-}
-
 export function FocusMode({
   session,
   taskTitle,
@@ -64,7 +49,9 @@ export function FocusMode({
   const [, setTick] = useState(0);
 
   const totalSeconds = session ? Math.max(60, plannedDurationMinutes(session) * 60) : 0;
-  const remainingSeconds = session ? resolveRemainingSeconds(session, totalSeconds) : 0;
+  const remainingSeconds = session
+    ? resolveRemainingFocusSeconds(session.actualStart, totalSeconds)
+    : 0;
   const motionGuardEnabled = session !== null && remainingSeconds > 0;
 
   const motionGuard = useFocusMotionGuard({ enabled: motionGuardEnabled });

@@ -2,7 +2,36 @@ import {
   buildCountdownSlots,
   layoutMetrics,
   resolveCountdownLayout,
+  resolveRemainingFocusSeconds,
 } from '../focus/focusCountdown';
+
+describe('resolveRemainingFocusSeconds', () => {
+  const start = '2026-07-04T09:00:00.000Z';
+  const startMs = new Date(start).getTime();
+  const total = 45 * 60; // 45 min session
+
+  it('shows full duration before focus has started (no actualStart)', () => {
+    expect(resolveRemainingFocusSeconds(null, total, startMs)).toBe(total);
+    expect(resolveRemainingFocusSeconds(undefined, total, startMs)).toBe(total);
+  });
+
+  it('counts down from actualStart, not the scheduled clock time', () => {
+    // 10 minutes after focus began → 35 minutes remain
+    expect(resolveRemainingFocusSeconds(start, total, startMs + 10 * 60 * 1000)).toBe(35 * 60);
+  });
+
+  it('starts immediately: one second after start it is already ticking', () => {
+    expect(resolveRemainingFocusSeconds(start, total, startMs + 1000)).toBe(total - 1);
+  });
+
+  it('never goes below zero once the duration has elapsed', () => {
+    expect(resolveRemainingFocusSeconds(start, total, startMs + 60 * 60 * 1000)).toBe(0);
+  });
+
+  it('falls back to full duration for an invalid actualStart', () => {
+    expect(resolveRemainingFocusSeconds('not-a-date', total, startMs)).toBe(total);
+  });
+});
 
 describe('FocusCountdown', () => {
   it('uses mmss layout under one hour', () => {

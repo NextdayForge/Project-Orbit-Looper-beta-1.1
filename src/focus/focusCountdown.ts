@@ -1,3 +1,37 @@
+/**
+ * Remaining focus seconds, anchored to when focus actually began (`actualStart`),
+ * NOT the session's scheduled clock time. This makes the timer a real countdown
+ * that starts the moment the user enters focus mode, regardless of whether the
+ * session's scheduled start time has arrived yet.
+ *
+ * - No `actualStart` yet (focus not started) → show the full planned duration.
+ * - Otherwise → planned duration minus elapsed since `actualStart`, clamped to
+ *   [0, total].
+ */
+export function resolveRemainingFocusSeconds(
+  actualStartIso: string | null | undefined,
+  totalSeconds: number,
+  nowMs: number = Date.now()
+): number {
+  const total = Math.max(0, Math.floor(totalSeconds));
+  if (!actualStartIso) {
+    return total;
+  }
+  const startedMs = new Date(actualStartIso).getTime();
+  if (Number.isNaN(startedMs)) {
+    return total;
+  }
+  const elapsedSeconds = (nowMs - startedMs) / 1000;
+  const remaining = total - elapsedSeconds;
+  if (remaining <= 0) {
+    return 0;
+  }
+  if (remaining >= total) {
+    return total;
+  }
+  return Math.floor(remaining);
+}
+
 export type CountdownLayout = 'mmss' | 'hmmss' | 'hhmmss';
 
 export interface CountdownSlots {

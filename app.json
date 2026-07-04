@@ -27,7 +27,8 @@
       },
       "package": "com.orbitlooper.app",
       "versionCode": 1,
-      "softwareKeyboardLayoutMode": "resize"
+      "softwareKeyboardLayoutMode": "resize",
+      "allowBackup": false
     },
     "plugins": [
       "expo-asset",
