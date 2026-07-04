@@ -7,7 +7,14 @@
 | チャネル | 対象 | リンク | QR |
 |---|---|---|---|
 | **Web版** | 全員（iPhoneでもブラウザで使える） | https://orbit-looper-red.vercel.app | ![](qr-web.png) |
-| **Android APK** | Androidのみ（通知など実機機能が使える） | [インストールページ](https://expo.dev/accounts/asuforge/projects/orbit-looper/builds/e4b08ae5-b5ac-448d-8d28-d28a52dfeca7) | ![](qr-android.png) |
+| **Android APK** | Androidのみ（通知など実機機能が使える） | [インストールページ](https://expo.dev/accounts/asuforge/projects/orbit-looper/builds/a5866f87-86ca-4b67-ba16-28f90b0a2b32) | ![](qr-android.png) |
+
+> ⚠️ APKは 2026-07-04 の再ビルド（`a5866f87…`）が最新。旧ビルド（`e4b08ae5…`）は誤ったプロキシトークンが焼き込まれておりAIが動かないので配布しないこと。
+
+## AI の使い方（チャネルで違う）
+
+- **APK**: 開発者のキーで動くので、テスターは何も設定せずにAI（コーチ・ふりかえり抽出・所要時間推定）が使える。
+- **Web版**: 各自で無料の Gemini API キーが必要。アプリ内 **設定 → AI（Web版のみ表示）** に貼り付けると有効化される。キーは端末（ブラウザ）内にのみ保存。取得: https://aistudio.google.com/apikey
 
 ## 口頭で伝える案内（コピペ用）
 
@@ -15,6 +22,7 @@
 > まずはこのQR（Web版）を開けば、iPhoneでもAndroidでもすぐ試せます。
 > Androidの方でアプリとして入れたい場合は、もう一つのQRからAPKをどうぞ。
 > 「不明なアプリのインストールを許可」を求められたら許可してください。
+> ※ Web版でAIコーチ等を使うには、設定→AIでご自分のGeminiキー（無料）を入れてください。Androidアプリ版はそのまま使えます。
 
 ## フィードバックの送り方
 
@@ -25,5 +33,6 @@
 ## 配布前チェック（当日）
 
 - [ ] Web版が実際に開けるか、当日会場のWi-Fiで再確認（`https://orbit-looper-red.vercel.app`）
-- [ ] Android実機でAPKインストール〜起動までの一連を1回通しておく（今回のセッションでは未実施）
+- [ ] Android実機で**新APK（`a5866f87…`）**をインストール〜起動〜AIコーチ応答まで1回通す（旧APKは配布しない）
+- [ ] Web版で自分のGeminiキーを入れてAIが有効化されるか1回確認
 - [ ] `BETA_FORCE_PRO_PLAN=true` のままであること（ベータ中は全員AI機能を使える設定）
