@@ -172,7 +172,7 @@ export function CoachModal({
       >
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
         <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
-          <BottomSheetDragHandle panHandlers={panHandlers}>
+          <BottomSheetDragHandle panHandlers={panHandlers} onClose={onClose}>
             <View style={styles.header}>
               <View style={styles.headerText}>
                 <Text style={styles.title}>AIコーチ</Text>

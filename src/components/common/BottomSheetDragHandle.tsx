@@ -2,6 +2,8 @@ import React, { ReactNode } from 'react';
 import {
   GestureResponderHandlers,
   StyleSheet,
+  Text,
+  TouchableOpacity,
   View,
   ViewStyle,
 } from 'react-native';
@@ -12,22 +14,44 @@ interface BottomSheetDragHandleProps {
   style?: ViewStyle;
   /**
    * `panHandlers` from `useBottomSheetDismiss`. Spread here (on this small
-   * handle+header zone) rather than on the whole sheet, so "drag to dismiss"
-   * is scoped to wherever this component is rendered — no pixel-threshold
-   * math needed (see useBottomSheetDismiss for why that was unreliable).
+   * handle+header zone) rather than on the whole sheet.
    */
   panHandlers?: GestureResponderHandlers;
+  /**
+   * When provided, the handle bar becomes a tap target that closes the sheet.
+   * Tap hit-testing is reliable inside RN `Modal`s on every platform, unlike
+   * PanResponder drag (flaky in the Modal's separate native window), so this
+   * guarantees a working dismiss affordance on the bar itself.
+   */
+  onClose?: () => void;
 }
 
-/** Visual handle + optional header content. Pass `panHandlers` from `useBottomSheetDismiss` to enable swipe-to-dismiss on this zone. */
-export function BottomSheetDragHandle({ children, style, panHandlers }: BottomSheetDragHandleProps) {
+/** Visual handle + optional header content. Pass `panHandlers` (swipe) and/or `onClose` (tap the bar) to dismiss. */
+export function BottomSheetDragHandle({ children, style, panHandlers, onClose }: BottomSheetDragHandleProps) {
   const styles = useThemedStyles(makeStyles);
+
+  const handleBar = (
+    <View style={styles.handleRow}>
+      <View style={styles.handle} />
+      {onClose ? <Text style={styles.hint}>スワイプ / タップで閉じる</Text> : null}
+    </View>
+  );
 
   return (
     <View style={[styles.dragZone, style]} collapsable={false} {...panHandlers}>
-      <View style={styles.handleRow}>
-        <View style={styles.handle} />
-      </View>
+      {onClose ? (
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="閉じる"
+          onPress={onClose}
+          activeOpacity={0.6}
+          hitSlop={{ top: 8, bottom: 8, left: 40, right: 40 }}
+        >
+          {handleBar}
+        </TouchableOpacity>
+      ) : (
+        handleBar
+      )}
       {children ? <View style={styles.headerContent}>{children}</View> : null}
     </View>
   );
@@ -58,6 +82,11 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: theme.textTertiary,
       borderRadius: 3,
       marginTop: 8,
-      marginBottom: 8,
+      marginBottom: 6,
+    },
+    hint: {
+      fontSize: 10,
+      color: theme.textTertiary,
+      marginBottom: 2,
     },
   });

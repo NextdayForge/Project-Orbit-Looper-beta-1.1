@@ -139,7 +139,7 @@ export function AiScheduleModal({
         >
           <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
             <SafeAreaView edges={['bottom']} style={styles.sheetInner}>
-              <BottomSheetDragHandle panHandlers={panHandlers}>
+              <BottomSheetDragHandle panHandlers={panHandlers} onClose={handleClose}>
                 <Text style={styles.title}>AIスケジュール作成</Text>
                 <Text style={styles.date}>{formatDateHeader(targetDate)}</Text>
                 <Text style={styles.desc}>

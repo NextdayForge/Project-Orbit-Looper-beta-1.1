@@ -175,7 +175,7 @@ export function ReflectionModal({
             <SafeAreaView edges={['bottom']} style={styles.sheetInner}>
               {saved ? (
                 <View style={styles.savedWrap}>
-                  <BottomSheetDragHandle panHandlers={panHandlers} />
+                  <BottomSheetDragHandle panHandlers={panHandlers} onClose={tryClose} />
                   <Text style={styles.savedTitle}>ふりかえりを保存しました</Text>
                 <Text style={styles.savedSub}>
                   今日の結果を学習し、明日のプランに反映します。
@@ -186,7 +186,7 @@ export function ReflectionModal({
               </View>
             ) : (
               <>
-                <BottomSheetDragHandle panHandlers={panHandlers}>
+                <BottomSheetDragHandle panHandlers={panHandlers} onClose={tryClose}>
                   <Text style={styles.title}>今日のふりかえり</Text>
                   <Text style={styles.date}>{formatDateHeader(date)}</Text>
                   {eveningQuestion ? (

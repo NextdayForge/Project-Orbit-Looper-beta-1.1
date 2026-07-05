@@ -107,7 +107,7 @@ export function EventEditor({
       >
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
         <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
-          <BottomSheetDragHandle panHandlers={panHandlers} style={styles.dragHandlePadding}>
+          <BottomSheetDragHandle panHandlers={panHandlers} onClose={onClose} style={styles.dragHandlePadding}>
             <Text style={styles.sheetTitle}>{isEditing ? '予定を編集' : '新しい予定'}</Text>
           </BottomSheetDragHandle>
           <View style={styles.sheetBody}>
