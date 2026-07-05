@@ -43,4 +43,17 @@ describe('resolveMorningReplanTaskIds', () => {
     const ids = resolveMorningReplanTaskIds(tasks, sessions, TODAY);
     expect(ids).toContain('old');
   });
+
+  it('still includes a never-placed placable task even when today already has active sessions', () => {
+    // Regression test: previously, once today had ANY active session, brand-new/
+    // never-placed inbox tasks (no session anywhere — e.g. one that failed to be
+    // placed on an earlier replan attempt) were excluded from replan candidates
+    // entirely, making them permanently unreachable (this app has no backlog view).
+    const orphan = makeTask({ id: 'orphan', status: 'ready', estimatedMinutes: 30 });
+    const placedToday = makeTask({ id: 'placed', status: 'ready', estimatedMinutes: 45 });
+    const sessions = [makeSession({ taskId: 'placed', date: TODAY })];
+
+    const ids = resolveMorningReplanTaskIds([orphan, placedToday], sessions, TODAY);
+    expect(ids).toEqual(expect.arrayContaining(['placed', 'orphan']));
+  });
 });

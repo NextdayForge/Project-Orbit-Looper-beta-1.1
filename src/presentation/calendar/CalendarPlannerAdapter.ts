@@ -10,6 +10,7 @@ export interface PlanApplyOutcome {
   rolledTomorrowTitles: string[];
   bumpedTomorrowTitles: string[];
   carriedFromPastTitles: string[];
+  stillUnplacedTitles: string[];
 }
 
 export interface GenerateDayPlanOptions {

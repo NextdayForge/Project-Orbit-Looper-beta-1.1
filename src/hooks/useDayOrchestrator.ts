@@ -124,6 +124,7 @@ export function useDayOrchestrator() {
             rolledTomorrowTitles: [],
             bumpedTomorrowTitles: [],
             carriedFromPastTitles: [],
+            stillUnplacedTitles: [],
           };
         }
 
@@ -175,6 +176,7 @@ export function useDayOrchestrator() {
             rolledTomorrowTitles: [],
             bumpedTomorrowTitles: [],
             carriedFromPastTitles: [],
+            stillUnplacedTitles: [],
           };
         }
 
@@ -196,6 +198,7 @@ export function useDayOrchestrator() {
           rolledTomorrowTitles: [],
           bumpedTomorrowTitles: [],
           carriedFromPastTitles: [],
+          stillUnplacedTitles: [],
         };
       } finally {
         setIsPlannerRunning(false);

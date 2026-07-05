@@ -20,10 +20,23 @@ describe('placementRollover', () => {
       bumpedTomorrowTitles: ['メール整理'],
       rolledTomorrowTitles: ['英語'],
       carriedFromPastTitles: ['数学'],
+      stillUnplacedTitles: [],
     });
     expect(notice).toContain('メール整理');
     expect(notice).toContain('英語');
     expect(notice).toContain('数学');
+  });
+
+  it('buildRolloverNotice warns about tasks that could not be placed anywhere', () => {
+    const notice = buildRolloverNotice({
+      result: 'applied',
+      bumpedTomorrowTitles: [],
+      rolledTomorrowTitles: [],
+      carriedFromPastTitles: [],
+      stillUnplacedTitles: ['巨大タスク'],
+    });
+    expect(notice).toContain('巨大タスク');
+    expect(notice).toContain('保留');
   });
 
   it('finds lower priority tasks to bump', () => {
@@ -201,6 +214,45 @@ describe('placementRollover', () => {
       });
 
       expect(saveSessions).not.toHaveBeenCalled();
+    });
+
+    it('does not claim a task was "rolled to tomorrow" when tomorrow is also full', async () => {
+      // Regression test: a task that fits nowhere (today or tomorrow) must show up
+      // as stillUnplaced, never as falsely-successful rolledTomorrowTitles — otherwise
+      // it ends up with no session on any date and becomes invisible (no backlog view
+      // exists in this app to recover it from).
+      const ok = makeTask({ id: 'ok', title: 'OK Task', priority: 3, estimatedMinutes: 60 });
+      const stuck = makeTask({ id: 'stuck', title: 'Stuck Task', priority: 5, estimatedMinutes: 90 });
+
+      const generateDayPlan = jest
+        .fn()
+        .mockImplementationOnce(async () =>
+          makePlan({
+            date: DATE_KEY,
+            sessions: [makeSession({ taskId: 'ok', date: DATE_KEY, startMinutes: 0, endMinutes: 60 })],
+          })
+        )
+        .mockImplementationOnce(async () => makePlan({ date: TOMORROW_KEY, sessions: [] }));
+
+      const applyDayPlan = jest.fn().mockResolvedValue('applied');
+      const saveSessions = jest.fn().mockResolvedValue(undefined);
+      const reload = jest.fn().mockResolvedValue({ tasks: [ok, stuck], sessions: [] });
+
+      const outcome = await runPlacementWithRollover({
+        targetDate: new Date(`${DATE_KEY}T00:00:00`),
+        taskIds: ['ok', 'stuck'],
+        tasks: [ok, stuck],
+        sessions: [],
+        isToday: true,
+        generateDayPlan,
+        applyDayPlan,
+        reload,
+        saveSessions,
+      });
+
+      expect(outcome.result).toBe('applied');
+      expect(outcome.rolledTomorrowTitles).toEqual([]);
+      expect(outcome.stillUnplacedTitles).toEqual(['Stuck Task']);
     });
   });
 

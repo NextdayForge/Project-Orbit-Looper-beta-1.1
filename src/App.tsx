@@ -441,9 +441,13 @@ function AppContent() {
         }
         const outcome = result as PlanApplyOutcome;
         if (outcome.result === 'skipped_empty') {
+          const stuckTitles = outcome.stillUnplacedTitles;
           setTodayPlanNotice({
             tone: 'warning',
-            text: 'スケジュールを配置する場所がありませんでした。タスクは登録済みですが、今日の予定には入っていません。',
+            text:
+              stuckTitles.length > 0
+                ? `スケジュールを配置する場所がありませんでした。タスクは登録済みです（${stuckTitles.join('、')}）。所要時間を短くするか、別の日を指定してください。`
+                : 'スケジュールを配置する場所がありませんでした。タスクは登録済みですが、今日の予定には入っていません。',
           });
           return;
         }

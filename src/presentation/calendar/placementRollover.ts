@@ -17,6 +17,15 @@ export interface PlanApplyOutcome {
   rolledTomorrowTitles: string[];
   bumpedTomorrowTitles: string[];
   carriedFromPastTitles: string[];
+  /**
+   * Tasks that could not be placed today OR tomorrow (tomorrow was also full).
+   * These are NOT included in rolledTomorrowTitles — claiming a roll succeeded
+   * when it didn't would silently orphan the task: it ends up with no session
+   * on any date, and since there is no all-tasks/backlog view in this app, it
+   * becomes invisible until the user happens to re-open AI schedule creation
+   * and notices it missing.
+   */
+  stillUnplacedTitles: string[];
 }
 
 export function getUnplacedTaskIds(
@@ -255,6 +264,11 @@ export function buildRolloverNotice(outcome: PlanApplyOutcome): string | null {
       `未完了だった予定（${outcome.carriedFromPastTitles.join('、')}）を今日に繰り越しました`
     );
   }
+  if (outcome.stillUnplacedTitles.length > 0) {
+    parts.push(
+      `空き時間が見つからず保留にした予定（${outcome.stillUnplacedTitles.join('、')}）があります。所要時間を短くするか、別の日を指定してください`
+    );
+  }
 
   return parts.length > 0 ? `${parts.join('。')}。` : null;
 }
@@ -338,13 +352,26 @@ export async function runPlacementWithRollover(
 
   unplaced = getUnplacedTaskIds(plan, taskIds, tasks, sessions);
 
+  const stillUnplacedTitles: string[] = [];
+
   if (unplaced.length > 0) {
     const tomorrowPlan = await generateDayPlan(tomorrow, unplaced);
     await applyDayPlan(tomorrowPlan, {
       mode: 'replaceTaskSessions',
       taskIds: unplaced,
     });
-    rolledTomorrowTitles.push(...titlesFor(unplaced, tasks));
+
+    // Tomorrow can also be full. Verify each task actually got a session there
+    // before reporting it as "rolled to tomorrow" — claiming success for a task
+    // that landed nowhere would leave it invisible (no session on any date, and
+    // this app has no all-tasks/backlog view to fall back on).
+    const stillUnplacedOnTomorrow = new Set(
+      getUnplacedTaskIds(tomorrowPlan, unplaced, tasks, sessions)
+    );
+    const actuallyRolled = unplaced.filter((id) => !stillUnplacedOnTomorrow.has(id));
+
+    rolledTomorrowTitles.push(...titlesFor(actuallyRolled, tasks));
+    stillUnplacedTitles.push(...titlesFor([...stillUnplacedOnTomorrow], tasks));
   }
 
   if (
@@ -357,6 +384,7 @@ export async function runPlacementWithRollover(
       rolledTomorrowTitles,
       bumpedTomorrowTitles,
       carriedFromPastTitles: [],
+      stillUnplacedTitles,
     };
   }
 
@@ -365,5 +393,6 @@ export async function runPlacementWithRollover(
     rolledTomorrowTitles,
     bumpedTomorrowTitles,
     carriedFromPastTitles: [],
+    stillUnplacedTitles,
   };
 }
