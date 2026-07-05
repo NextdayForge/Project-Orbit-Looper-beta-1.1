@@ -22,6 +22,10 @@
 ### 決定事項
 - ボトムシート系モーダルの操作ボタン（保存・削除・キャンセル等）は、常にScrollViewの外側の固定フッターに置く。この規約を今後の新規モーダルにも適用する。
 
+### 続報（ユーザーの標準指示どおり自動でpush・APK再ビルド・配布資料更新を実施）
+
+push後Vercelが自動本番デプロイ（Ready）、https://orbit-looper-red.vercel.app が最新デプロイ（`rakdc9a8v`）を指すことを確認。Android APK新ビルド: `https://expo.dev/accounts/asuforge/projects/orbit-looper/builds/c67afce8-13fd-4a29-b3d5-8874abd2fc9b`。`docs/lt-assets/`のQR・`LT_HANDOUT.md`・当日チェックリスト（ふりかえりの保存/キャンセル確認項目を追加）を新ビルドに更新。
+
 ### 経緯・何が起きたか
 
 前回セッションで3回試みた「ボトムシートのドラッグ閉じ」修正（useNativeDriver統一→locationYベース判定の廃止）が、ユーザーの実機（Android）でも直っていなかった。3連続で外したため、当て推量での修正を止め、まず土台となるライブラリの有無を確認する方針に切り替えた。
