@@ -61,13 +61,19 @@ export function useBottomSheetDismiss(
             Animated.timing(translateY, {
               toValue: DISMISS_ANIMATION_DISTANCE,
               duration: 180,
-              useNativeDriver: true,
+              // Must stay false to match the imperative `setValue` used in
+              // onPanResponderMove above. Mixing `setValue` (JS) with a
+              // useNativeDriver:true animation "moves" the node to native, after
+              // which later `setValue` calls silently stop updating the view on
+              // Android/iOS — so the drag works once, then dies (invisible on
+              // web, where useNativeDriver is a no-op).
+              useNativeDriver: false,
             }).start(onClose);
             return;
           }
           Animated.spring(translateY, {
             toValue: 0,
-            useNativeDriver: true,
+            useNativeDriver: false,
             bounciness: 0,
           }).start();
         },
@@ -75,7 +81,7 @@ export function useBottomSheetDismiss(
           touchStartY.current = null;
           Animated.spring(translateY, {
             toValue: 0,
-            useNativeDriver: true,
+            useNativeDriver: false,
             bounciness: 0,
           }).start();
         },
