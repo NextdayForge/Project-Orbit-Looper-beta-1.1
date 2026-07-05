@@ -98,7 +98,8 @@ function resolveSessionsToReschedule(
         taskIds.includes(session.taskId) &&
         session.status !== 'completed' &&
         !session.completed &&
-        session.status !== 'rescheduled'
+        session.status !== 'rescheduled' &&
+        !(session.status === 'cancelled' && session.archived)
     );
   }
 
@@ -107,7 +108,8 @@ function resolveSessionsToReschedule(
       session.date === date &&
       session.status !== 'completed' &&
       !session.completed &&
-      session.status !== 'rescheduled'
+      session.status !== 'rescheduled' &&
+      !(session.status === 'cancelled' && session.archived)
   );
 }
 

@@ -313,6 +313,18 @@ export async function applyDelete(
         );
         if (!hasOtherSessions) {
           await gateway.deleteTask(session.taskId);
+        } else if (session.status !== 'completed' && !session.completed) {
+          // Task survives (other sessions still need doing elsewhere), but this
+          // occurrence's slice of work is gone. Shrink the task's remaining scope
+          // by that amount so the next AI replan doesn't recreate a new session
+          // to cover time the user just deleted from the schedule.
+          const task = gateway.tasks.find((item) => item.id === session.taskId);
+          if (task) {
+            await gateway.updateTask({
+              ...task,
+              estimatedMinutes: Math.max(0, task.estimatedMinutes - session.estimatedMinutes),
+            });
+          }
         }
       }
       return;

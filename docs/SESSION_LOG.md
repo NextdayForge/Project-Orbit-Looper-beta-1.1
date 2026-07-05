@@ -7,6 +7,27 @@
 
 ## 2026-07-06
 
+### 続報（削除したはずのタスクがAIの再配置で復活するバグを修正）
+
+前回の「タスク削除が達成率を永久に下げる」修正の直後、ユーザーから新たに「削除したはずのタスクがAIによる再配置で復活してしまう」との報告があった。
+
+**調査:** まずSubagent（Explore）で`isActivePlacementSession()`（`src/types/session.ts`）が前回の修正で他の判定関数（`isMutableScheduleSession`等）と違って`cancelled`+`archived`を除外し忘れていることを発見したが、それだけでは「Taskの完全復活」は説明できないと判断し、自分でリポジトリ層・プレースメント層を深掘りした。`src/__tests__/`に一時的な再現テスト（`zzrepro.test.ts`、後で削除）を書いて実際に動かし、根本原因を実証的に特定した。
+
+**確認できた事実（実際にテストで再現）:**
+- 単一セッションのタスクを削除した場合: `CalendarEditorAdapter.applyDelete`が正しく`deleteTask`を呼び、Task自体がリポジトリから完全に消えるため、その後の`selectTasksForPlacement`は空配列を返す（＝復活しない、安全）。
+- **複数セッションを持つタスク（`splittable`など、他の日にもう1つ有効なセッションが残っている場合）を削除した場合が本命だった**: `CalendarEditorAdapter.applyDelete`は「他に有効なセッションが残っている」と判断してTask自体は削除せず、今日のSessionだけを`cancelled`+`archived`にする（これは意図通り）。しかし**Taskの`estimatedMinutes`（残り作業量）はそのまま変わらない**ため、次にAIが再配置（`generateDayPlan`→`selectTasksForPlacement`→`remainingMinutesForTask`）を実行すると、削除した分の時間がまるまる「まだ配置されていない残り作業」として再計算され、新しいSessionとして作り直されてしまう。実際にテストで、120分のタスクから60分のセッションを削除しても、次の配置候補には120分（削除前と同じ量）がそのまま残ることを確認した。
+
+**修正内容:**
+- `src/types/session.ts`の`isActivePlacementSession()`: `cancelled`+`archived`のセッション（＝削除済み）を除外するよう修正。他の判定関数と整合させ、削除済みセッションが配置エンジンの「アンカー（避けるべき既存予定）」やGeminiへのプロンプト文脈（`PromptBuilder.ts`）に紛れ込まないようにした（副次的な改善）。
+- `src/hooks/useScheduleActions.ts`の`resolveSessionsToReschedule()`: 同様に`cancelled`+`archived`のセッションを除外。修正前は、あるタスクを対象にした再配置が走るたびに、既に削除済み（cancelled）のセッションが`rescheduled`に書き換えられてしまい、「これはユーザー削除だ」という前回確立したシグナルが静かに壊れていた（統計への実害は`archived`フラグで既に防げていたが、将来のバグの種になるため修正）。
+- **本命の修正** — `src/presentation/calendar/CalendarEditorAdapter.ts`の`applyDelete`: タスクが他のセッションのおかげで削除されずに残るケースで、削除された（かつ未完了だった）セッションの`estimatedMinutes`分だけ、そのTaskの`estimatedMinutes`を減らす（0未満にはしない）ようにした。これにより「このタスクの一部を削除した」という意図がTaskの残り作業量に正しく反映され、次のAI再配置がその分を再び作り出さなくなる。既に完了済みのセッションを削除（履歴整理）した場合は減算しない（その分の作業は既に完了扱いで、二重に不利益を与えないため）。
+
+**設計原則との整合性の検討:** CLAUDE.mdの設計原則2「AIはSessionを変える。Taskは勝手に変えない」に抵触しないか検討した。今回の変更はAIではなく、ユーザーが編集画面で明示的に「削除」を押した結果としてTaskの残り作業量を減らすものであり、「AIが勝手にTaskを変える」ケースには当たらないと判断した。
+
+**相互作用の確認:** `isActivePlacementSession`の全利用箇所（`placementRollover.ts`、`PromptBuilder.ts`、`PlacementResultValidator.ts`、`LocalPlacementStrategy.ts`、`placementTaskSelector.ts`）を確認し、いずれも「削除済みセッションを除外する」方向の変更が安全あるいは改善であることを確認した。既存テスト（203件）は全て変更なしで通過。
+
+**検証:** `npx tsc --noEmit` 0エラー。新規`src/__tests__/calendarEditorAdapter.test.ts`を作成し、「唯一のセッションを削除するとTaskごと削除される」「他のセッションが残る場合はTaskごと消さずestimatedMinutesだけ減る」「完了済みセッション削除では減らさない」「0未満にはならない」の4ケースを追加。`src/__tests__/sessionVisibility.test.ts`に`isActivePlacementSession`のケースを追加。`npm test`は33スイート203件全て成功。`npm run lint`は0エラー・26警告（ベースラインと一致）。
+
 ### 続報（タスク削除が達成率に永久に悪影響を与えるバグを修正）
 
 ユーザーから「タスクを編集画面から削除すると、表記上は消えるが総タスク数が減らず、このままだと削除するたびに達成率が二度と100%に到達できなくなる」との報告があった。

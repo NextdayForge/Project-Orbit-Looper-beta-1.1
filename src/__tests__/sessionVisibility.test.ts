@@ -1,4 +1,5 @@
 import {
+  isActivePlacementSession,
   isDayProgressSession,
   isInactiveScheduleSession,
   isMutableScheduleSession,
@@ -36,5 +37,19 @@ describe('session visibility helpers', () => {
     expect(isMutableScheduleSession(makeSession({ status: 'planned' }))).toBe(true);
     expect(isMutableScheduleSession(makeSession({ status: 'rescheduled' }))).toBe(false);
     expect(isMutableScheduleSession(makeSession({ archived: true }))).toBe(false);
+  });
+
+  it('excludes rescheduled and deleted (cancelled+archived) sessions from active placement', () => {
+    // Regression: a deleted session must never be treated as "active" by the
+    // placement/replan pipeline (placementTaskSelector.ts), or a task whose only
+    // session today was just deleted gets pulled back into the replan candidate set.
+    expect(isActivePlacementSession(makeSession({ status: 'planned' }))).toBe(true);
+    expect(isActivePlacementSession(makeSession({ status: 'rescheduled' }))).toBe(false);
+    expect(isActivePlacementSession(makeSession({ status: 'cancelled', archived: true }))).toBe(false);
+    // A completed+archived session (tidied-up history) must still count as active/done
+    // for remaining-minutes calculations — only cancelled+archived means "deleted".
+    expect(
+      isActivePlacementSession(makeSession({ status: 'completed', completed: true, archived: true }))
+    ).toBe(true);
   });
 });

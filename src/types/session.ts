@@ -43,9 +43,20 @@ export function plannedDurationMinutes(session: Pick<Session, 'startMinutes' | '
   return session.endMinutes - session.startMinutes;
 }
 
-/** Sessions kept for history after midday adjustment; excluded from placement. */
+/**
+ * Sessions kept for history after midday adjustment; excluded from placement.
+ * Also excludes cancelled+archived sessions (user deletions — see
+ * `useScheduleActions.deleteTask`/`deleteSession`): a deleted session must
+ * never be treated as "still active" by the placement/replan pipeline.
+ */
 export function isActivePlacementSession(session: Session): boolean {
-  return session.status !== 'rescheduled';
+  if (session.status === 'rescheduled') {
+    return false;
+  }
+  if (session.status === 'cancelled' && session.archived) {
+    return false;
+  }
+  return true;
 }
 
 export function isSessionCompleted(session: Session): boolean {
