@@ -252,7 +252,9 @@ export function ReflectionModal({
                 <Text style={styles.hint}>
                   それぞれの欄に直接入力してください。学習ループ（UserModel 更新）は端末内で行われます。
                 </Text>
+              </ScrollView>
 
+              <View style={styles.footer}>
                 <TouchableOpacity
                   style={[styles.primaryBtn, saving && styles.primaryBtnDisabled]}
                   onPress={handleSave}
@@ -269,7 +271,7 @@ export function ReflectionModal({
                 <TouchableOpacity style={styles.cancelBtn} onPress={tryClose} disabled={saving}>
                   <Text style={styles.cancelBtnText}>キャンセル</Text>
                 </TouchableOpacity>
-              </ScrollView>
+              </View>
               </>
             )}
             </SafeAreaView>
@@ -300,6 +302,12 @@ const makeStyles = (theme: Theme) =>
       flexGrow: 0,
       flexShrink: 1,
       maxHeight: 360,
+    },
+    footer: {
+      flexShrink: 0,
+      paddingTop: 8,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.separator,
     },
     scrollContent: {
       paddingBottom: 16,
