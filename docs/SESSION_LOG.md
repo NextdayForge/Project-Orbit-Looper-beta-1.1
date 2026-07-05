@@ -27,8 +27,11 @@
 - ドラッグ閉じの完全な実機対応（`react-native-gesture-handler`導入等）は今回のスコープ外とし、まず「タップでも確実に閉じられる」対応を優先した。ユーザーへの説明と承認のもとでの方針転換。
 - 今後、真にドラッグ閉じを実機で保証したい場合は`react-native-gesture-handler`の導入を検討する（要・実機での動作確認体制）。
 
+### 続報（ユーザーの標準指示どおり自動でpush・APK再ビルド・配布資料更新を実施）
+
+ユーザーの「改善後は勝手にpush・APK生成まで」という指示に従い実施。push後Vercelが自動本番デプロイ（Ready）、https://orbit-looper-red.vercel.app が最新デプロイ（`nh0nuqzfx`）を指すことを確認。Android APK新ビルド: `https://expo.dev/accounts/asuforge/projects/orbit-looper/builds/219eabbb-22cf-4864-8eda-7b754138ed9d`。`docs/lt-assets/`のQR・`LT_HANDOUT.md`・当日チェックリスト（ドラッグ確認→タップ確認に文言変更）を新ビルドに更新。
+
 ### 次回への申し送り
-- **push・APK再ビルドは未実施。** 修正はコミット済みだが、ユーザーの確認・承認を待ってからWeb反映（push）とAPK再ビルドを行う。
 - ハンドルバーの**タップ**で閉じられることを実機で確認してもらう（ドラッグより確実性が高いはず）。もし引き続きドラッグでの動作にこだわりたい場合は、`react-native-gesture-handler`導入という次のステップを検討する。
 
 
