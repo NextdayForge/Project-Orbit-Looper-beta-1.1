@@ -1,6 +1,6 @@
 import { DayPlan } from '../../types/dayPlan';
 import { DecisionLog } from '../../types/decisionLog';
-import { Session } from '../../types/session';
+import { Session, isSessionCompleted } from '../../types/session';
 import {
   AiPlacementDecision,
   PlannerEvaluationInput,
@@ -8,7 +8,12 @@ import {
   PlannerEvaluationSampleCounts,
 } from './plannerEvaluationTypes';
 
-const FAILED_PLACEMENT_STATUSES = new Set<Session['status']>(['rescheduled', 'cancelled', 'skipped']);
+// 'cancelled' is deliberately excluded: it is only ever set by user-initiated
+// deletion (useScheduleActions deleteTask/deleteSession), always paired with
+// archived:true. Deleting a task after the AI placed it well isn't a placement
+// failure — it's handled separately in countPlacementSuccess (excluded from
+// both successful and total, rather than counted as failed).
+const FAILED_PLACEMENT_STATUSES = new Set<Session['status']>(['rescheduled', 'skipped']);
 
 function rate(numerator: number, denominator: number): number {
   if (denominator <= 0) {
@@ -34,15 +39,22 @@ function countPlacementSuccess(plannedSessions: Session[], actualById: Map<strin
   total: number;
 } {
   let successful = 0;
+  let total = 0;
 
   for (const planned of plannedSessions) {
     const actual = actualById.get(planned.id);
+    if (actual?.archived && !isSessionCompleted(actual)) {
+      // Placed fine, then deleted by the user afterward — not a placement
+      // failure. Exclude entirely rather than counting it against the AI.
+      continue;
+    }
+    total += 1;
     if (actual && !FAILED_PLACEMENT_STATUSES.has(actual.status)) {
       successful += 1;
     }
   }
 
-  return { successful, total: plannedSessions.length };
+  return { successful, total };
 }
 
 function computeOutcomeMetrics(sessions: Session[]): {

@@ -76,11 +76,10 @@ export function extract(
 
   const completedCount = allOutcomes.filter((outcome) => outcome.completed).length;
   const lateCount = timedOutcomes.filter((outcome) => outcome.startedLate).length;
-  const skipCount = daySessions.filter(
-    (session) =>
-      session.status === 'skipped' ||
-      (session.status === 'cancelled' && !session.outcome?.completed)
-  ).length;
+  // 'cancelled' is not counted here: it is only ever set by user-initiated task
+  // deletion (always paired with archived:true), which isDayProgressSession
+  // already excludes from daySessions upstream — a deleted task isn't a skip.
+  const skipCount = daySessions.filter((session) => session.status === 'skipped').length;
   const rescheduleCount = allDaySessions.filter((session) => session.status === 'rescheduled').length;
   const rateDenominator = Math.max(allDaySessions.length, 1);
 

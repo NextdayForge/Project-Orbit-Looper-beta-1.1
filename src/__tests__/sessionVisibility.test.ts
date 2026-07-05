@@ -21,6 +21,11 @@ describe('session visibility helpers', () => {
     expect(isScheduleVisibleSession(archivedDone)).toBe(false);
   });
 
+  it('excludes archived incomplete (deleted) sessions from day progress', () => {
+    const deletedTask = makeSession({ status: 'cancelled', archived: true });
+    expect(isDayProgressSession(deletedTask)).toBe(false);
+  });
+
   it('treats rescheduled and archived as inactive for task completion', () => {
     expect(isInactiveScheduleSession(makeSession({ status: 'rescheduled' }))).toBe(true);
     expect(isInactiveScheduleSession(makeSession({ archived: true, status: 'planned' }))).toBe(true);

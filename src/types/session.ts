@@ -62,9 +62,22 @@ export function isScheduleVisibleSession(session: Session): boolean {
   );
 }
 
-/** Counted in Today progress (includes archived completed sessions). */
+/**
+ * Counted in Today progress / completion-rate stats (Today, Insights, learning
+ * pipeline). Includes archived *completed* sessions (history kept after tidy-up),
+ * but excludes archived *incomplete* sessions — those are user-deleted tasks
+ * (see `useScheduleActions.deleteTask`/`deleteSession`), not real unfinished work.
+ * Counting a deleted task here would permanently drag down completion rates,
+ * since it can never become "done".
+ */
 export function isDayProgressSession(session: Session): boolean {
-  return session.status !== 'rescheduled';
+  if (session.status === 'rescheduled') {
+    return false;
+  }
+  if (session.archived && !isSessionCompleted(session)) {
+    return false;
+  }
+  return true;
 }
 
 /** Incomplete sessions that can still be planned, focused, or shifted. */

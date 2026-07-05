@@ -7,7 +7,6 @@ import {
 import { decisionLogRepository, sessionRepository } from '../repositories';
 import { DayPlan } from '../types/dayPlan';
 import { DecisionLog } from '../types/decisionLog';
-import { isDayProgressSession } from '../types/session';
 import { generateId } from '../utils/time';
 
 const PLANNER_EVALUATION_REASON_TAGS = ['evaluation', 'planner', 'learning'] as const;
@@ -60,9 +59,12 @@ export function useLearning() {
         return null;
       }
 
-      const actualSessions = sessions.filter(
-        (session) => session.date === dayPlan.date && isDayProgressSession(session)
-      );
+      // Intentionally NOT filtered by isDayProgressSession here: PlannerEvaluationService
+      // needs to see each planned session's real status/archived flag directly, so it can
+      // tell "deleted by the user" (archived, excluded from the evaluation) apart from
+      // "rescheduled away" (a genuine placement failure) — both would otherwise look like
+      // the same "missing from the list" case if pre-filtered.
+      const actualSessions = sessions.filter((session) => session.date === dayPlan.date);
       const aiDecisionLogs = decisionLogs.filter((log) => log.type === 'planner_ai_generate');
 
       const result = plannerEvaluationService.evaluate({

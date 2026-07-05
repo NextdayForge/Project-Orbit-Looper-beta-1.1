@@ -306,9 +306,14 @@ export function useScheduleActions() {
           if (session.status === 'completed' || session.completed) {
             return sessionRepository.save({ ...session, archived: true });
           }
+          // archived:true marks this as a user deletion (not a genuine skip/
+          // reschedule) so isDayProgressSession/PlannerEvaluationService exclude
+          // it from completion-rate and placement-quality stats instead of
+          // counting a deleted task as an unfinished/failed one forever.
           return sessionRepository.save({
             ...session,
             status: 'cancelled',
+            archived: true,
             rescheduledAt: session.rescheduledAt ?? now,
           });
         })
@@ -429,9 +434,11 @@ export function useScheduleActions() {
       if (session.status === 'completed' || session.completed) {
         await sessionRepository.save({ ...session, archived: true });
       } else {
+        // archived:true marks this as a user deletion — see deleteTask for why.
         await sessionRepository.save({
           ...session,
           status: 'cancelled',
+          archived: true,
           rescheduledAt: session.rescheduledAt ?? new Date().toISOString(),
         });
       }

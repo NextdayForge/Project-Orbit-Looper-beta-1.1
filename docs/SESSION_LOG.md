@@ -7,6 +7,25 @@
 
 ## 2026-07-06
 
+### 続報（タスク削除が達成率に永久に悪影響を与えるバグを修正）
+
+ユーザーから「タスクを編集画面から削除すると、表記上は消えるが総タスク数が減らず、このままだと削除するたびに達成率が二度と100%に到達できなくなる」との報告があった。
+
+**原因調査:** 削除の呼び出し連鎖自体（`CalendarView.tsx` → `CalendarEditorAdapter.applyDelete` → `useScheduleActions.deleteTask`/`deleteSession` → `TaskRepository.delete`）を追ったところ、`TaskRepository.delete()`はストレージから完全に削除する正規の実装であり、削除ロジック自体にバグはなかった。実際の原因は、削除時に未完了のSessionを`status:'cancelled'`にする際、統計系の判定関数`isDayProgressSession`（`src/types/session.ts`）が`rescheduled`しか除外しておらず、**削除によって生まれた`cancelled`のSessionを「未完了の実行漏れ」としてTodayの進捗率・Insightsの7日間達成率の分母に数え続けてしまう**ことだった。この分母は一度増えると二度と減らないため、削除するたびに達成率の天井が下がっていく（ユーザーの懸念通り）構造になっていた。
+
+さらに`status:'cancelled'`が使われている箇所を全て`grep`で洗い出したところ、削除以外にこのステータスをセットする場所は存在せず（`useScheduleActions.deleteTask`/`deleteSession`の2箇所のみ）、にもかかわらず`DailyFeatureExtractor.ts`の`skipCount`（サボり扱い）と`PlannerEvaluationService.ts`の`FAILED_PLACEMENT_STATUSES`（AI配置失敗扱い）の両方で`cancelled`が「ユーザーの実行漏れ・AIの配置ミス」の兆候として誤って扱われていることも判明した。「ユーザーが削除した」という意味と「サボった/配置に失敗した」という意味が同じステータス値に重なっていたのが根本原因。
+
+**修正方針・内容:** 既存の`archived`フラグ（元々「カレンダー非表示だが進捗・学習には残す」用途）を「これはユーザーによる削除である」という明示マーカーとして使うことにした。
+- `useScheduleActions.ts`の`deleteTask`/`deleteSession`: 未完了Sessionを`cancelled`にする際、必ず`archived:true`も同時にセットするよう変更（完了済みSessionをアーカイブする既存分岐は変更なし）。
+- `src/types/session.ts`の`isDayProgressSession()`: `archived && !isSessionCompleted`の場合は進捗分母から除外するよう修正（完了済みのアーカイブ済みSessionは従来通り分母に含める＝この挙動を検証する既存テストはそのまま通過）。これでTodayView・InsightsViewの両方が透過的に修正された（両画面ともこの関数経由でフィルタしているため直接の変更は不要）。
+- `src/intelligence/planner/PlannerEvaluationService.ts`: `FAILED_PLACEMENT_STATUSES`から`cancelled`を除外し、`countPlacementSuccess()`を「削除されたSessionは成功・失敗どちらにもカウントせず、分子・分母の両方から完全に除外する」ロジックに変更（AIが適切に配置した後でユーザーが削除しただけなのに、AIの配置失敗として学習に悪影響を与えないようにするため）。
+- `src/hooks/useLearning.ts`の`evaluatePlanner`: `actualSessions`の事前フィルタとして使っていた`isDayProgressSession`を撤去。理由は、`PlannerEvaluationService`が「削除されたSession」と「再スケジュールされたSession」を区別するには、フィルタされる前の生の`status`/`archived`情報が必要なため（事前にフィルタすると両方とも単に「リストに無い」という同じ見え方になってしまい判別できない）。
+- `src/intelligence/learning/DailyFeatureExtractor.ts`の`skipCount`: `cancelled`を判定条件に含めていた分岐を削除し、`skipped`のみを見るよう簡略化（この分岐は、`daySessions`が既に`isDayProgressSession`でフィルタ済み・かつ`cancelled`は常に`archived:true`とペアになる現在の実装では、そもそも到達不可能な死んだコードになっていたため）。
+
+**相互作用の確認:** `CalendarView`/`CalendarEditorAdapter`（削除呼び出し連鎖、既存のまま問題なし）、`CalendarViewAdapter.ts`（`isScheduleVisibleSession`を使っており元々このバグの影響を受けていなかったことを確認）、`eveningQuestion.ts`・`proposalContext.ts`（`isDayProgressSession`経由で透過的に修正されることを確認、直接の変更不要）を個別に確認し、他に同種のバグが無いことを確認した。
+
+**検証:** `npx tsc --noEmit` 0エラー。`src/__tests__/sessionVisibility.test.ts`に「削除済み（archived+未完了）Sessionは進捗分母から除外される」テストを追加、新規`src/__tests__/plannerEvaluationService.test.ts`を作成し「削除されたSessionは配置成功率の分子・分母どちらからも除外される」「再スケジュールされたSessionは引き続き配置失敗としてカウントされる」の2ケースを追加。`npm test`は32スイート198件全て成功（既存195件+新規3件）。`npm run lint`は0エラー・26警告（ベースラインと一致、新規警告なし）。
+
 ### 続報（タップ閉じの実機確認OK、追加で「ふりかえり」保存/キャンセルがスクロール必須だった問題を修正）
 
 ユーザーからタップでの閉じが実機で機能したとの報告を受けた。続けて「今日のふりかえり」画面で、下にスワイプ（スクロール）しないと「保存して学習させる」「キャンセル」ボタンに気づけない・押せない、との追加要望があった。
