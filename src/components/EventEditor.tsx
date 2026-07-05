@@ -106,11 +106,11 @@ export function EventEditor({
         style={styles.overlay}
       >
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-        <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]} {...panHandlers}>
-          <BottomSheetDragHandle />
-          <View style={styles.sheetBody}>
+        <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
+          <BottomSheetDragHandle panHandlers={panHandlers} style={styles.dragHandlePadding}>
             <Text style={styles.sheetTitle}>{isEditing ? '予定を編集' : '新しい予定'}</Text>
-
+          </BottomSheetDragHandle>
+          <View style={styles.sheetBody}>
           <ScrollView
             style={styles.formScroll}
             contentContainerStyle={styles.formContent}
@@ -290,6 +290,7 @@ const makeStyles = (theme: Theme) =>
     // overflows off-screen and becomes unreachable.
     flexShrink: 1,
   },
+  dragHandlePadding: { paddingHorizontal: 20 },
   sheetTitle: {
     fontSize: 20,
     fontWeight: '700',

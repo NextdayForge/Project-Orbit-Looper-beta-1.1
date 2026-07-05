@@ -30,8 +30,8 @@ export function LooperPickerSheet({
     <Modal transparent animationType={modalAnimation('slide')} visible={visible} onRequestClose={onCancel}>
       <View style={styles.overlay}>
         <Pressable style={styles.backdrop} onPress={onCancel} />
-        <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]} {...panHandlers}>
-          <BottomSheetDragHandle>
+        <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
+          <BottomSheetDragHandle panHandlers={panHandlers}>
             <View style={styles.toolbar}>
               <TouchableOpacity onPress={onCancel} hitSlop={12}>
                 <Text style={styles.cancel}>キャンセル</Text>

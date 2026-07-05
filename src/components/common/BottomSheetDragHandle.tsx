@@ -1,18 +1,30 @@
 import React, { ReactNode } from 'react';
-import { StyleSheet, View, ViewStyle } from 'react-native';
+import {
+  GestureResponderHandlers,
+  StyleSheet,
+  View,
+  ViewStyle,
+} from 'react-native';
 import { Theme, useThemedStyles } from '../../theme';
 
 interface BottomSheetDragHandleProps {
   children?: ReactNode;
   style?: ViewStyle;
+  /**
+   * `panHandlers` from `useBottomSheetDismiss`. Spread here (on this small
+   * handle+header zone) rather than on the whole sheet, so "drag to dismiss"
+   * is scoped to wherever this component is rendered — no pixel-threshold
+   * math needed (see useBottomSheetDismiss for why that was unreliable).
+   */
+  panHandlers?: GestureResponderHandlers;
 }
 
-/** Visual handle + optional header content. Attach swipe via `useBottomSheetDismiss` on the sheet root (move-only, no tap capture). */
-export function BottomSheetDragHandle({ children, style }: BottomSheetDragHandleProps) {
+/** Visual handle + optional header content. Pass `panHandlers` from `useBottomSheetDismiss` to enable swipe-to-dismiss on this zone. */
+export function BottomSheetDragHandle({ children, style, panHandlers }: BottomSheetDragHandleProps) {
   const styles = useThemedStyles(makeStyles);
 
   return (
-    <View style={[styles.dragZone, style]} collapsable={false}>
+    <View style={[styles.dragZone, style]} collapsable={false} {...panHandlers}>
       <View style={styles.handleRow}>
         <View style={styles.handle} />
       </View>

@@ -171,11 +171,11 @@ export function ReflectionModal({
           keyboardVerticalOffset={Platform.OS === 'ios' ? 4 : 0}
           style={styles.sheetAvoider}
         >
-          <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]} {...panHandlers}>
+          <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
             <SafeAreaView edges={['bottom']} style={styles.sheetInner}>
               {saved ? (
                 <View style={styles.savedWrap}>
-                  <BottomSheetDragHandle />
+                  <BottomSheetDragHandle panHandlers={panHandlers} />
                   <Text style={styles.savedTitle}>ふりかえりを保存しました</Text>
                 <Text style={styles.savedSub}>
                   今日の結果を学習し、明日のプランに反映します。
@@ -186,7 +186,7 @@ export function ReflectionModal({
               </View>
             ) : (
               <>
-                <BottomSheetDragHandle>
+                <BottomSheetDragHandle panHandlers={panHandlers}>
                   <Text style={styles.title}>今日のふりかえり</Text>
                   <Text style={styles.date}>{formatDateHeader(date)}</Text>
                   {eveningQuestion ? (

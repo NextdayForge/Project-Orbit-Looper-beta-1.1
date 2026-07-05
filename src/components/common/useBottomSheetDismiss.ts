@@ -5,42 +5,45 @@ import { Animated, PanResponder } from 'react-native';
 export const BOTTOM_SHEET_DISMISS_DRAG_THRESHOLD = 36;
 /** Flick velocity needed to dismiss with a short drag. */
 export const BOTTOM_SHEET_DISMISS_VELOCITY = 0.2;
-/** Top area of the sheet (px) where swipe-to-dismiss is active. */
-export const BOTTOM_SHEET_DRAG_ZONE_HEIGHT = 148;
 const DISMISS_ANIMATION_DISTANCE = 360;
 
+/**
+ * Swipe-to-dismiss gesture for a bottom sheet.
+ *
+ * IMPORTANT: spread the returned `panHandlers` on the small drag-handle zone
+ * (`BottomSheetDragHandle`), NOT on the whole sheet. An earlier version
+ * attached them to the sheet root and used `evt.nativeEvent.locationY`
+ * (thresholded against a fixed pixel zone) to restrict dragging to the top of
+ * the sheet — `locationY`'s reference frame is one of the most notoriously
+ * inconsistent values across RN platforms/versions (it's relative to
+ * whichever nested view actually received the touch, which differs between
+ * web's polyfill and real Android/iOS), so the same code could pass on web
+ * and silently never satisfy the threshold on-device. Scoping the responder
+ * to the handle zone structurally removes the need for any location math —
+ * a touch either starts inside that small component's bounds or it doesn't.
+ */
 export function useBottomSheetDismiss(
   isOpen: boolean,
   onClose: () => void,
   disabled = false
 ) {
   const translateY = useRef(new Animated.Value(0)).current;
-  const touchStartY = useRef<number | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       translateY.setValue(0);
-      touchStartY.current = null;
     }
   }, [isOpen, translateY]);
 
   const panHandlers = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: (evt) => {
-          if (disabled) {
-            touchStartY.current = null;
-            return false;
-          }
-          touchStartY.current = evt.nativeEvent.locationY;
-          return false;
-        },
+        // Never claim on touch-start: lets ordinary taps (including any
+        // button placed inside the handle zone) pass through untouched.
+        onStartShouldSetPanResponder: () => false,
         onStartShouldSetPanResponderCapture: () => false,
         onMoveShouldSetPanResponder: (_, gesture) => {
-          if (disabled || touchStartY.current === null) {
-            return false;
-          }
-          if (touchStartY.current > BOTTOM_SHEET_DRAG_ZONE_HEIGHT) {
+          if (disabled) {
             return false;
           }
           return gesture.dy > 4 && gesture.dy > Math.abs(gesture.dx) * 0.7;
@@ -53,7 +56,6 @@ export function useBottomSheetDismiss(
           }
         },
         onPanResponderRelease: (_, gesture) => {
-          touchStartY.current = null;
           if (
             gesture.dy > BOTTOM_SHEET_DISMISS_DRAG_THRESHOLD ||
             gesture.vy > BOTTOM_SHEET_DISMISS_VELOCITY
@@ -61,12 +63,11 @@ export function useBottomSheetDismiss(
             Animated.timing(translateY, {
               toValue: DISMISS_ANIMATION_DISTANCE,
               duration: 180,
-              // Must stay false to match the imperative `setValue` used in
+              // Must match the imperative `setValue` used in
               // onPanResponderMove above. Mixing `setValue` (JS) with a
-              // useNativeDriver:true animation "moves" the node to native, after
-              // which later `setValue` calls silently stop updating the view on
-              // Android/iOS — so the drag works once, then dies (invisible on
-              // web, where useNativeDriver is a no-op).
+              // useNativeDriver:true animation "moves" the node to native,
+              // after which later `setValue` calls silently stop updating
+              // the view on Android/iOS.
               useNativeDriver: false,
             }).start(onClose);
             return;
@@ -78,7 +79,6 @@ export function useBottomSheetDismiss(
           }).start();
         },
         onPanResponderTerminate: () => {
-          touchStartY.current = null;
           Animated.spring(translateY, {
             toValue: 0,
             useNativeDriver: false,

@@ -50,9 +50,9 @@ export function ScheduleAdjustModal({
     <Modal visible={isOpen} animationType={modalAnimation('slide')} transparent onRequestClose={tryClose}>
       <View style={styles.overlay}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={tryClose} />
-        <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]} {...panHandlers}>
+        <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
           <SafeAreaView edges={['bottom']} style={styles.sheetInner}>
-            <BottomSheetDragHandle>
+            <BottomSheetDragHandle panHandlers={panHandlers}>
               <Text style={styles.title}>今日の予定を調整</Text>
               <Text style={styles.subtitle}>
                 無理のない方法を選んでください。適用前に内容を確認できます。
