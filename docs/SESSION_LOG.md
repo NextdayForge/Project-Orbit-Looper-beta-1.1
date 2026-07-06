@@ -37,8 +37,19 @@
 - `cd workers/looper-gemini-proxy && npx wrangler deploy`成功。`https://looper-gemini-proxy.nextdayforge.workers.dev`に反映済み（Version ID: `c7e8e964-f6c4-40cd-8068-fee11cb63c05`）。ratelimitバインディングも正しく認識された。
 - デプロイ後、`curl`で無認証/不正トークンのリクエストがいずれも401で拒否されることを確認（正規トークンでの許可リスト動作は、トークン値を扱わない方針のため未検証だが、`--dry-run`でのバンドル検証とコードレビューで担保）。
 
+### 続報（Vercel本番反映の確認・Android APK再ビルド着手）
+
+ユーザーから「Vercel pushとAPKは今どうなっているか」と聞かれたため、`npx vercel ls`/`vercel inspect`で確認した。**Vercelは反映済み**: 本番デプロイ（`dpl_3fUY5SzjGh9H8YjE5ENXhnnxwq59`）がReady状態で、**https://orbit-looper-red.vercel.app** に本日2コミット分（Worker強化＋ログ更新）が反映されている。
+
+一方**Android APKは前回ビルド（`e4b08ae5-...`、2026-07-06時点）のまま**で、本日のクライアント側修正（ストレージ破損フォールバック・バックグラウンドflush）は未反映であることを説明した。この2点は緊急性の低い予防的修正と判断し前回は再ビルドを見送っていたが、ユーザーから「実行してください」と明示的な指示があったため、`npm run build:android:preview`（`eas build --platform android --profile preview --non-interactive`）をバックグラウンドで開始した。
+
+- ビルドログ: https://expo.dev/accounts/asuforge/projects/orbit-looper/builds/dc583766-9c0d-4d11-b680-8dbcc811c01d
+- EAS環境変数（preview: `EXPO_PUBLIC_LOOPER_AI_BETA_TOKEN`/`EXPO_PUBLIC_LOOPER_AI_PROXY_URL`）は自動読み込み確認済み。
+- 本ログ記録時点ではまだキュー待ち〜ビルド中。**完了・インストールURLの確定は次回以降に確認・追記が必要。**
+
 ### 次回への申し送り
-- Worker本番デプロイ・pushとも完了済み。次にGemini経由のコーチ/ふりかえり等を実際に使った際、正常応答が返るか（許可リストで`gemini-2.5-flash`が弾かれていないか）を一度確認するとより安心。
+- **【要確認】Android APK再ビルド（`dc583766-9c0d-4d11-b680-8dbcc811c01d`）の完了確認がまだ。** 完了したら[docs/BETA_ANDROID_APK.md](BETA_ANDROID_APK.md)等の配布資料URLも更新すること。
+- Worker本番デプロイ・push・Vercel反映は完了済み。次にGemini経由のコーチ/ふりかえり等を実際に使った際、正常応答が返るか（許可リストで`gemini-2.5-flash`が弾かれていないか）を一度確認するとより安心。
 - レート制限バインディングはopen beta機能・wranglerも古い（3.114、最新4系）。何か問題が出たら`npm install --save-dev wrangler@4`を先に試す。
 - 前回からの持ち越し: Vercel版の実地ブラウザ確認・Android APKの実機確認は引き続き未実施。
 
