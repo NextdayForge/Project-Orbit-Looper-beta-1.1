@@ -41,17 +41,30 @@
 
 ユーザーから「Vercel pushとAPKは今どうなっているか」と聞かれたため、`npx vercel ls`/`vercel inspect`で確認した。**Vercelは反映済み**: 本番デプロイ（`dpl_3fUY5SzjGh9H8YjE5ENXhnnxwq59`）がReady状態で、**https://orbit-looper-red.vercel.app** に本日2コミット分（Worker強化＋ログ更新）が反映されている。
 
-一方**Android APKは前回ビルド（`e4b08ae5-...`、2026-07-06時点）のまま**で、本日のクライアント側修正（ストレージ破損フォールバック・バックグラウンドflush）は未反映であることを説明した。この2点は緊急性の低い予防的修正と判断し前回は再ビルドを見送っていたが、ユーザーから「実行してください」と明示的な指示があったため、`npm run build:android:preview`（`eas build --platform android --profile preview --non-interactive`）をバックグラウンドで開始した。
+一方**Android APKは前回ビルドのまま**で、本日のクライアント側修正（ストレージ破損フォールバック・バックグラウンドflush）は未反映であることを説明した。この2点は緊急性の低い予防的修正と判断し前回は再ビルドを見送っていたが、ユーザーから「実行してください」と明示的な指示があったため、`npm run build:android:preview`（`eas build --platform android --profile preview --non-interactive`）をバックグラウンドで開始した。
 
 - ビルドログ: https://expo.dev/accounts/asuforge/projects/orbit-looper/builds/dc583766-9c0d-4d11-b680-8dbcc811c01d
 - EAS環境変数（preview: `EXPO_PUBLIC_LOOPER_AI_BETA_TOKEN`/`EXPO_PUBLIC_LOOPER_AI_PROXY_URL`）は自動読み込み確認済み。
 - 本ログ記録時点ではまだキュー待ち〜ビルド中。**完了・インストールURLの確定は次回以降に確認・追記が必要。**
 
+**【訂正】** この時点の報告で「前回ビルドは`e4b08ae5-...`（2026-07-02時点）」と述べたのは誤り。`e4b08ae5`はさらに10回近く再ビルドで上書きされており、実際に配布されていた最新ビルドは`docs/lt-assets/LT_HANDOUT.md`の更新履歴（コミット`5920a2f`）が示す**`72a7e82f`（2026-07-06、削除タスク復活バグ修正込み）**だった。ユーザーへの説明としては「前回ビルドのまま未反映」という結論自体は変わらないため実害はないが、個別のビルドIDを述べる際はSESSION_LOG本文の物語ではなく`docs/lt-assets/LT_HANDOUT.md`（配布資料の一次情報）を参照すべきだった。
+
+### 続報（ユーザーからビルド遅延の指摘・完了確認・配布資料更新）
+
+ビルド開始から45分経過した時点でユーザーから「遅くないか」と指摘された。`eas build:view`で確認したところ`in progress`（エラーではない・3分前に更新あり）で、通常の10〜20分よりは明らかに遅いがEAS無料枠のキュー混雑によるものと推測される旨を報告し、10分後に再確認するようスケジュールした。
+
+その後ビルドが完了（`finished`、開始6:29:21→終了7:16:02、**実質46分**）。インストールリンク:
+
+**https://expo.dev/accounts/asuforge/projects/orbit-looper/builds/dc583766-9c0d-4d11-b680-8dbcc811c01d**
+
+配布資料を新ビルドに合わせて更新した: `docs/lt-assets/LT_HANDOUT.md`のリンク・警告文（変更点に「Geminiプロキシの防御強化・ローカルデータ破損フォールバック」を追記、テスターが操作確認できる項目ではない旨を明記）・当日チェックリストの新ビルドID表記、`docs/lt-assets/qr-android.png`を`npx qrcode`で再生成（既存の実施パターンを踏襲）。
+
 ### 次回への申し送り
-- **【要確認】Android APK再ビルド（`dc583766-9c0d-4d11-b680-8dbcc811c01d`）の完了確認がまだ。** 完了したら[docs/BETA_ANDROID_APK.md](BETA_ANDROID_APK.md)等の配布資料URLも更新すること。
-- Worker本番デプロイ・push・Vercel反映は完了済み。次にGemini経由のコーチ/ふりかえり等を実際に使った際、正常応答が返るか（許可リストで`gemini-2.5-flash`が弾かれていないか）を一度確認するとより安心。
+- Worker本番デプロイ・push・Vercel反映・APK再ビルド（`dc583766…`）・配布資料更新まで、本セッションのタスクはすべて完了。
+- **Android実機での動作確認（新ビルド`dc583766…`）はまだ実施できていない。** インストール〜起動〜AIコーチ応答までの一連を、実機が使えるタイミングで確認すること。
+- 次にGemini経由のコーチ/ふりかえり等を実際に使った際、正常応答が返るか（Worker側の許可リストで`gemini-2.5-flash`が弾かれていないか）を一度確認するとより安心。
 - レート制限バインディングはopen beta機能・wranglerも古い（3.114、最新4系）。何か問題が出たら`npm install --save-dev wrangler@4`を先に試す。
-- 前回からの持ち越し: Vercel版の実地ブラウザ確認・Android APKの実機確認は引き続き未実施。
+- 前回からの持ち越し: Vercel版の実地ブラウザ確認は引き続き未実施。
 
 ## 2026-07-06
 
