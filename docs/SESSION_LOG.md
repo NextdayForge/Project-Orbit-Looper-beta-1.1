@@ -30,10 +30,16 @@
 - ルートの`tsc --noEmit`は`workers/`を対象外とし、Workerの型チェックは別コマンドで行う（CLAUDE.mdに記載）。
 - レビューで指摘した残りの軽微項目のうち、lint警告26件（14件は`--fix`可能）と`.gitignore`の`.env*`重複は意図的に未対応のまま（実害なし・コミットを焦点化するため）。
 
+### 続報（push・Workerデプロイ完了）
+
+ユーザー承認を得て、当初ブロックされていた2操作を実行した。
+- `git push`成功（`5920a2f..6129db0`）。Vercel自動デプロイもトリガー済み（別途ブラウザ実地確認は未実施のまま — 下記申し送り参照）。
+- `cd workers/looper-gemini-proxy && npx wrangler deploy`成功。`https://looper-gemini-proxy.nextdayforge.workers.dev`に反映済み（Version ID: `c7e8e964-f6c4-40cd-8068-fee11cb63c05`）。ratelimitバインディングも正しく認識された。
+- デプロイ後、`curl`で無認証/不正トークンのリクエストがいずれも401で拒否されることを確認（正規トークンでの許可リスト動作は、トークン値を扱わない方針のため未検証だが、`--dry-run`でのバンドル検証とコードレビューで担保）。
+
 ### 次回への申し送り
-- **【重要・未完】Workerの再デプロイが未実施。** 本セッションは本番デプロイの権限がなくブロックされたため、修正済みWorkerはまだ本番に反映されていない。`cd workers/looper-gemini-proxy && npx wrangler deploy`（ログイン済みアカウント: nextdayforge@gmail.com）を実行するまで、本番プロキシは旧コード（モデル無検証・レート制限なし）のまま。クライアント互換性は確認済み（デフォルトの`gemini-2.5-flash`は許可リスト内）なのでいつデプロイしても安全。
-- レート制限バインディングはopen beta機能。wranglerが古い（3.114、最新4系）ため、デプロイで問題が出たら`npm install --save-dev wrangler@4`を先に試す。デプロイ後、アプリからコーチ/ふりかえり等のGemini機能が通ることを一度確認する。
-- このpushでVercelの自動デプロイが走る（アプリ側変更はWeb版にも安全: AppState flushとストレージフォールバックのみ）。
+- Worker本番デプロイ・pushとも完了済み。次にGemini経由のコーチ/ふりかえり等を実際に使った際、正常応答が返るか（許可リストで`gemini-2.5-flash`が弾かれていないか）を一度確認するとより安心。
+- レート制限バインディングはopen beta機能・wranglerも古い（3.114、最新4系）。何か問題が出たら`npm install --save-dev wrangler@4`を先に試す。
 - 前回からの持ち越し: Vercel版の実地ブラウザ確認・Android APKの実機確認は引き続き未実施。
 
 ## 2026-07-06
