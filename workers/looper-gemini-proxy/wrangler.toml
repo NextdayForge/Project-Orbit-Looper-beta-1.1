@@ -4,3 +4,12 @@ compatibility_date = "2024-12-01"
 
 [observability]
 enabled = true
+
+# Per-IP rate limit (Workers rate-limiting binding, open beta).
+# Legitimate clients fire at most a few requests/min; this caps cost abuse
+# by anyone who extracts the beta token from a public bundle.
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 30, period = 60 }

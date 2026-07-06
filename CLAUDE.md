@@ -41,10 +41,11 @@ DayType は 4 種のみ: `REST / LIGHT / NORMAL / PUSH`（SPRINT は未実装）
 | Lint | `npm run lint`（`eslint.config.js`, flat config。ESLint 9 系のため旧 `.eslintrc.js` は廃止済み） |
 | テスト | `npm test` （= jest、`intelligence/` と `utils/` の純粋ロジックのみ対象） |
 | 単体テスト | `npx jest src/__tests__/scoringEngine.test.ts` |
-| 型チェック | `npx tsc --noEmit` |
+| 型チェック | `npx tsc --noEmit`（`workers/` は対象外） |
+| Worker型チェック | `cd workers/looper-gemini-proxy && npx tsc --noEmit`（要 `npm install`） |
 | Android プレビュービルド | `npm run build:android:preview` |
 
-現状のベースライン（2026-07-02時点）: 型チェック0エラー / テスト31スイート・167件全て成功 / lint 0エラー・26警告（既存の軽微な `no-unused-vars` 等、未対応）。
+現状のベースライン（2026-07-07時点）: 型チェック0エラー（app/worker両方） / テスト34スイート・206件全て成功 / lint 0エラー・26警告（既存の軽微な `no-unused-vars` 等、未対応）。
 
 ---
 

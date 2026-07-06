@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { Modal, StyleSheet, View, Alert } from 'react-native';
+import { AppState, Modal, StyleSheet, View, Alert } from 'react-native';
 
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -70,7 +70,7 @@ import {
   getCloudAiUnavailableMessage,
   getCloudAiUnavailableTitle,
 } from './intelligence/ai/aiCapabilities';
-import { userModelRepository } from './repositories';
+import { flushLooperData, userModelRepository } from './repositories';
 import { UserModel } from './types/userModel';
 import { buildLearningNotes } from './presentation/learning/learningNotes';
 import { Theme, ThemeContext, resolveTheme, lightTheme } from './theme';
@@ -97,6 +97,17 @@ function AppContent() {
   } = useDayOrchestrator();
 
   const ui = useCalendarUiState();
+
+  useEffect(() => {
+    // Persistence is debounced (500ms); if the OS kills the app right after a
+    // write, that window is lost. Flush whenever we leave the foreground.
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'background' || state === 'inactive') {
+        void flushLooperData();
+      }
+    });
+    return () => subscription.remove();
+  }, []);
 
 
 

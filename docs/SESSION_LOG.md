@@ -5,6 +5,37 @@
 
 ---
 
+## 2026-07-07
+
+### 経緯（D:\ayosh機・アプリ一括レビュー → セキュリティ/堅牢性の修正）
+
+ユーザーから「このアプリについて一括レビューしてほしい」と依頼された。セッション開始手順（pull＝差分なし）の後、ベースライン3点を実行し全て緑（この時点で型0エラー・33スイート203件・lint 0エラー26警告。CLAUDE.md記載の31/167は古かった）。さらにアーキテクチャのガードレールをgrepで機械検証し、`intelligence/`・`utils/`へのRN import・`legacy/` import・`repositories/`外からの`LooperDataStore`直接importがいずれもゼロであることを確認した。
+
+レビューで挙げた要対応3件（いずれもWeb公開によりベータトークンが事実上公開情報になったことが背景）:
+1. **Workerプロキシがクライアント指定の`model`を無検証でURLに埋め込む** — 高額モデルの悪用とパス操作の余地。
+2. **プロキシにレート制限・ボディサイズ制限がない** — トークン取得者がGeminiキーを使い放題にできる。
+3. **`LooperDataStore.loadFromDisk`の主経路の`JSON.parse`がtry/catchなし** — `looper-data`キーが破損すると全`load()`がthrowしアプリが起動不能（レガシー経路にはcatchがあるのに主経路になかった）。
+
+ユーザーが「対応してください」と承認したため、以下を実装した:
+- **Worker（`workers/looper-gemini-proxy/src/index.ts`）:** モデル許可リスト（`gemini-2.5-flash`/`-lite`のみ）、ボディ100KB上限、`crypto.subtle.timingSafeEqual`によるトークン比較、IP毎30req/分のレート制限（`wrangler.toml`にWorkers rate limitingバインディング（unsafe/open beta）を追加。コードは`env.RATE_LIMITER`が無くても動くようオプショナル）。`wrangler deploy --dry-run`でバインディング認識とバンドル成功を確認済み。
+- **ストレージ破損フォールバック:** 純粋関数`parseLooperDataRaw()`を新設（`src/storage/looperDataParse.ts`、looperBackupCoreと同じ「純粋コア切り出し」パターン）し、破損時はraw全体を新キー`looper-data-corrupt-backup`に隔離してから移行/空データへフォールバック。テスト`looperDataParse.test.ts`を追加。
+- **バックグラウンド遷移時のflush:** デバウンス書き込み（500ms）がOSのアプリkillで失われる穴を、`App.tsx`にAppStateリスナーを追加して`flushLooperData()`で塞いだ。
+- **軽微:** `package.json`のnameを`my-calendar-app`→`orbit-looper`に修正、CLAUDE.mdのベースライン更新（34スイート206件）とWorker型チェックコマンドの追記。
+- **副次対応:** `timingSafeEqual`はWorkers独自APIでDOM型に存在しないため、ルート`tsconfig.json`の`exclude`に`workers`を追加した（Workerは自前のtsconfig＋`@cloudflare/workers-types`で型チェックする。両方0エラー確認済み）。
+
+最終検証: 型チェック0エラー（app/worker両方）・34スイート206件全成功・lint 0エラー26警告（従来どおり）。
+
+### 決定事項
+- プロキシの防御は「トークンは公開前提、Worker側の許可リスト＋サイズ上限＋レート制限が実質の防衛線」という設計に変更。
+- ルートの`tsc --noEmit`は`workers/`を対象外とし、Workerの型チェックは別コマンドで行う（CLAUDE.mdに記載）。
+- レビューで指摘した残りの軽微項目のうち、lint警告26件（14件は`--fix`可能）と`.gitignore`の`.env*`重複は意図的に未対応のまま（実害なし・コミットを焦点化するため）。
+
+### 次回への申し送り
+- **【重要・未完】Workerの再デプロイが未実施。** 本セッションは本番デプロイの権限がなくブロックされたため、修正済みWorkerはまだ本番に反映されていない。`cd workers/looper-gemini-proxy && npx wrangler deploy`（ログイン済みアカウント: nextdayforge@gmail.com）を実行するまで、本番プロキシは旧コード（モデル無検証・レート制限なし）のまま。クライアント互換性は確認済み（デフォルトの`gemini-2.5-flash`は許可リスト内）なのでいつデプロイしても安全。
+- レート制限バインディングはopen beta機能。wranglerが古い（3.114、最新4系）ため、デプロイで問題が出たら`npm install --save-dev wrangler@4`を先に試す。デプロイ後、アプリからコーチ/ふりかえり等のGemini機能が通ることを一度確認する。
+- このpushでVercelの自動デプロイが走る（アプリ側変更はWeb版にも安全: AppState flushとストレージフォールバックのみ）。
+- 前回からの持ち越し: Vercel版の実地ブラウザ確認・Android APKの実機確認は引き続き未実施。
+
 ## 2026-07-06
 
 ### 続報（削除したはずのタスクがAIの再配置で復活するバグを修正）
