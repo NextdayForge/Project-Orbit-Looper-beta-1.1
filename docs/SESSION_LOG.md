@@ -33,9 +33,27 @@
 - 「アプリを開かなくても必ず実タスク入りの通知が出る」完全版には、クラウド同期バックエンドの新設が必要と判断し、今回はスコープ外とした（ローカル完結の2段階ハイブリッドで妥協）。
 - 複数の通知スケジュール機能が同居する場合は、`cancelAllScheduledNotificationsAsync()`（全消し）ではなく、各機能が固定`identifier`を持ち`cancelScheduledNotificationAsync(identifier)`で自分の分だけ管理する、という規約を今後の通知機能にも適用する。
 
+### 続報（push・Vercel再デプロイ・EASログイン試行・ビルド上限で保留）
+
+ユーザー承認を得て、起床通知機能をpushした。
+
+**Vercelの状況を確認したところ、混乱が判明した。** このデバイスでログイン済みのVercelアカウント（`iwashita-naos-projects`）には自分で作った`orbit-looper`プロジェクトしか無く、`docs/lt-assets/LT_HANDOUT.md`が実際に配布用として参照している**`orbit-looper-red.vercel.app`は別のVercelアカウント**のプロジェクトだった（D:\ayosh機のセッションが作成したものと推測される）。`iwashita-naos-projects/orbit-looper`は`vercel deploy --prod`で再デプロイし最新化したが、`orbit-looper-red`側はGitHub連携による自動デプロイに任せる他なく、**このセッションからは反映の確認ができない**（`curl`でのHTTP 200確認のみ、内容の鮮度は未検証）。二つの独立したVercelプロジェクトが並行して存在している状態を申し送りとして残す。
+
+**Android APK再ビルドではEASログインでつまずいた。** `eas-cli login`をこのPC（初めてこのマシンで`eas-cli`を使う）で試みたところ、ユーザーが`nextdayforge@gmail.com`で2回とも「Your username, email, or password was incorrect」となった。原因調査の結果、**このExpoアカウント（ユーザー名`asuforge`、過去のビルド全ての所有者）はGoogleログイン専用で作成されており、そもそも通常のパスワードが存在しない**ため、メール/パスワード方式のCLIログインは原理的に失敗すると判明した（ブラウザで`expo.dev/login`→Googleログインを試したところ、ユーザー名が確かに`asuforge`であることは確認済み）。
+
+解決策として、パスワードではなく**Personal Access Token**（`expo.dev/settings/access-tokens`で発行）を使う方式に切り替えた。ユーザーがブラウザでトークンを発行し、`.env`に`EXPO_TOKEN=...`として直接追記（値は一切チャットに出さず、`grep`で存在確認のみ）。`export EXPO_TOKEN=$(grep ... | cut ...)`でシェル内に読み込んだ上で`npx eas-cli whoami`を実行し、`asuforge (authenticated using EXPO_TOKEN)`で認証成功を確認した。
+
+続けて`eas build --platform android --profile preview --non-interactive`を実行したが、**「Free planの今月分のAndroidビルド枠を使い切った」旨のエラーで失敗**した（D:\ayosh機のセッションが同月中に何度も再ビルドを繰り返していたため）。リセットは2026-08-01（実行時点から約3日後）。ユーザーに「リセットを待つ」か「有料プランへアップグレードする」かを確認したところ、**リセット待ちを選択**（課金判断はユーザー自身の操作に委ねる方針のため、アップグレード操作はこちらでは行っていない）。
+
+### 決定事項（続報分）
+- Android APKの再ビルドは2026-08-01のクォータリセットまで保留する。
+- Vercelは`iwashita-naos-projects/orbit-looper`（このセッションで作成）と`orbit-looper-red`（別アカウント、配布資料が参照する本命）の2つが並行して存在する状態を許容し、当面はGitHub自動デプロイに任せる。将来的にどちらか一方に統一するかは未検討。
+- Expoアカウント（`asuforge`）はGoogleログイン専用でパスワードが存在しないため、CLIからの認証は今後も`EXPO_TOKEN`（Personal Access Token）方式を使う。
+
 ### 次回への申し送り
-- **起床通知の実機確認がまだ。** Androidの新ビルドをまだ作っていないため、実機でDAILYトリガーが実際に起床時刻に発火するか、通知チャンネルのimportance:MAXでヘッドアップ表示されるかを確認する必要がある。
-- push・APK再ビルド・配布資料更新は今回まだ実施していない（このセッションでは確認を取ってから行う方針）。
+- **2026-08-01以降、クォータリセットを確認してからAndroid APK再ビルドを実行すること。** 認証は`.env`の`EXPO_TOKEN`（既に保存済み）を`export EXPO_TOKEN=$(grep '^EXPO_TOKEN=' .env | cut -d= -f2-)`で読み込んでから`eas build --platform android --profile preview --non-interactive`。完了後は`docs/lt-assets/`のQR・`LT_HANDOUT.md`を新ビルドIDに更新すること。
+- **起床通知の実機確認がまだ。** 上記の新ビルドが取れ次第、実機でDAILYトリガーが起床時刻に発火するか、通知チャンネルのimportance:MAXでヘッドアップ表示されるかを確認する必要がある。
+- **Vercelの二重プロジェクト問題を認識しておくこと。** `orbit-looper-red`（配布資料の本命、別アカウント）と`orbit-looper`（このセッションのアカウント）が並行して存在する。今後Vercel関連の作業をする際はどちらを指しているか都度確認すること。
 - 前回からの持ち越し: Vercel版・Android APK（`dc583766…`）の実機での最終動作確認がまだ完了していない（2026-07-07時点の申し送りのまま）。
 
 ---
