@@ -5,6 +5,41 @@
 
 ---
 
+## 2026-07-08
+
+### 経緯（別デバイスでの新機能開発・「毎朝の起床時通知」）
+
+前回セッション（このデバイス）ではLT配布準備（Web版検証・プロキシデプロイ・Vercelデプロイ）を進めていたが、`git fetch`したところ36コミット遅れており、別デバイス（D:\ayosh）で2026-07-06・07-07の2日間に大量の作業（タスク削除関連バグ2件・ボトムシート閉じ操作の実機バグ3連続修正・Geminiプロキシのセキュリティ強化・ストレージ破損フォールバック・APK複数回再ビルド）が既に完了・push済みだったと判明。`git pull`で追従し、ベースラインを再確認した（tsc 0エラー・34スイート206件・lint 0エラー26警告、SESSION_LOG記載値と一致）。
+
+ユーザーから新機能の依頼: 「毎朝起床時にスマホの画面に大きな通知（その日やること）を表示する機能」。まずコード変更前に、既存の通知基盤（`useSessionNotifications.ts`、次のセッション開始5分前に`DATE`型トリガーで一度きり通知）と`settings.wakeMinutes`（Planner側でのみ使用、通知には未接続）を調査した。
+
+**構造的な制約を確認した:** このアプリはクラウド同期の無いローカルファースト設計（設計原則5）で、サーバー側でその日の予定を把握する手段が無い。そのため「アプリを一度も開かなくても、起床時刻に必ずその日の実際のタスクを反映した通知を出す」ことは、サーバープッシュ基盤を新設しない限り原理的に不可能。この制約を先にユーザーに説明し、次の2段階のハイブリッド案で承認を得た:
+- 段階1: `expo-notifications`の`DAILY`トリガー（OS管理、アプリ未起動でも起床時刻に必ず発火）＋`AndroidImportance.MAX`で、内容は一般文言（例:「Orbit Looperを開いて今日の予定を準備しましょう」）。
+- 段階2: アプリが起動するたび（前夜〜起床前に開かれていれば）、その時点で分かっている今日のセッション内容（件数・最初のタスク名）で通知本文を上書き・再スケジュールする。
+
+### 実装内容
+
+`src/presentation/notifications/wakeSummary.ts`を新設し、`buildTodaySummary(sessions, tasks, dateKey)`という純粋関数を切り出した（`bulkTaskInput.ts`と同じ「RN非依存の純粋ロジックをpresentation/配下に切り出してjest対象にする」パターン）。今日のアクティブなセッションが無ければ一般文言、1件なら「今日の予定は『〜』の1件」、複数件なら最初のタスク名＋残り件数を返す。
+
+`src/hooks/useWakeNotification.ts`を新規作成。`useSessionNotifications.ts`とほぼ同じ構造（Android Expo Go検知でスキップ、`__DEV__`のみ警告ログ、権限リクエスト）だが、トリガーは`DAILY`（`hour`/`minute`は`wakeMinutes`から算出）、通知チャンネルは別ID（`looper-wake`、importance: MAX）。`App.tsx`に配線し、`ui.settings?.wakeMinutes ?? DEFAULT_SETTINGS.wakeMinutes`を渡す。
+
+**既存フックとの衝突を発見・修正:** `useSessionNotifications.ts`は`Notifications.cancelAllScheduledNotificationsAsync()`で**全ての**予約済み通知を毎回消してから再スケジュールしていたため、そのままでは新しい起床通知（`DAILY`）が次のセッション通知の更新のたびに消されてしまう。両フックの通知に固定`identifier`（`looper-next-session`/`looper-wake-daily`）を付け、`cancelAllScheduledNotificationsAsync()`を自分自身のIDだけを対象にした`cancelScheduledNotificationAsync(identifier)`に変更して解消した。
+
+**テスト:** `src/__tests__/wakeSummary.test.ts`を新規作成（5件: セッション無し→一般文言、1件→タイトル+1件、複数件→最初のタイトル+残り件数、他日のセッションは無視、完了済みセッションは無視）。
+
+**検証:** `npx tsc --noEmit`（0エラー）・`npm test`（35スイート211件全成功）・`npm run lint`（0エラー・26警告、ベースラインと一致）。
+
+### 決定事項
+- 「アプリを開かなくても必ず実タスク入りの通知が出る」完全版には、クラウド同期バックエンドの新設が必要と判断し、今回はスコープ外とした（ローカル完結の2段階ハイブリッドで妥協）。
+- 複数の通知スケジュール機能が同居する場合は、`cancelAllScheduledNotificationsAsync()`（全消し）ではなく、各機能が固定`identifier`を持ち`cancelScheduledNotificationAsync(identifier)`で自分の分だけ管理する、という規約を今後の通知機能にも適用する。
+
+### 次回への申し送り
+- **起床通知の実機確認がまだ。** Androidの新ビルドをまだ作っていないため、実機でDAILYトリガーが実際に起床時刻に発火するか、通知チャンネルのimportance:MAXでヘッドアップ表示されるかを確認する必要がある。
+- push・APK再ビルド・配布資料更新は今回まだ実施していない（このセッションでは確認を取ってから行う方針）。
+- 前回からの持ち越し: Vercel版・Android APK（`dc583766…`）の実機での最終動作確認がまだ完了していない（2026-07-07時点の申し送りのまま）。
+
+---
+
 ## 2026-07-07
 
 ### 経緯（D:\ayosh機・アプリ一括レビュー → セキュリティ/堅牢性の修正）

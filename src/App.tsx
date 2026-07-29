@@ -61,6 +61,8 @@ import { reasonTagsToSentences } from './presentation/explain/reasonLabels';
 import { buildRolloverNotice } from './presentation/calendar/placementRollover';
 import { PlanApplyOutcome } from './presentation/calendar/CalendarPlannerAdapter';
 import { useSessionNotifications } from './hooks/useSessionNotifications';
+import { useWakeNotification } from './hooks/useWakeNotification';
+import { DEFAULT_SETTINGS } from './types/schedule';
 import { ScheduleNotice } from './components/DayTaskList';
 
 import { Session, isMutableScheduleSession } from './types/session';
@@ -370,6 +372,13 @@ function AppContent() {
   );
 
   useSessionNotifications(sessions, tasks, todayKey, ready && ui.ready);
+  useWakeNotification(
+    sessions,
+    tasks,
+    todayKey,
+    ui.settings?.wakeMinutes ?? DEFAULT_SETTINGS.wakeMinutes,
+    ready && ui.ready
+  );
 
   const scheduleNeedsReplan = useMemo(
     () => hasOverdueIncompleteSessions(todaySessions, nowMinutes),

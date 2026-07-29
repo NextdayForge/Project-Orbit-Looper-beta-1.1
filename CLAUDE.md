@@ -45,7 +45,7 @@ DayType は 4 種のみ: `REST / LIGHT / NORMAL / PUSH`（SPRINT は未実装）
 | Worker型チェック | `cd workers/looper-gemini-proxy && npx tsc --noEmit`（要 `npm install`） |
 | Android プレビュービルド | `npm run build:android:preview` |
 
-現状のベースライン（2026-07-07時点）: 型チェック0エラー（app/worker両方） / テスト34スイート・206件全て成功 / lint 0エラー・26警告（既存の軽微な `no-unused-vars` 等、未対応）。
+現状のベースライン（2026-07-08時点）: 型チェック0エラー（app/worker両方） / テスト35スイート・211件全て成功 / lint 0エラー・26警告（既存の軽微な `no-unused-vars` 等、未対応）。
 
 ---
 

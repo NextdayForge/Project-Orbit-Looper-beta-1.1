@@ -7,6 +7,7 @@ import { Task } from '../types/task';
 import { parseDateKey } from '../utils/time';
 
 const LEAD_MINUTES = 5;
+const NOTIFICATION_ID = 'looper-next-session';
 
 /** Expo Go on Android cannot use push APIs; local schedule may still fail — fail silently. */
 function isAndroidExpoGo(): boolean {
@@ -92,7 +93,9 @@ export function useSessionNotifications(
 
         if (cancelled) return;
 
-        await Notifications.cancelAllScheduledNotificationsAsync();
+        // Cancel only this hook's own notification — useWakeNotification schedules a
+        // separate daily one under a different identifier and must not be wiped here.
+        await Notifications.cancelScheduledNotificationAsync(NOTIFICATION_ID);
 
         const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
         const next = findNextSession(sessions, dateKey, nowMinutes);
@@ -108,6 +111,7 @@ export function useSessionNotifications(
         const title = tasks.find((task) => task.id === next.taskId)?.title ?? '次のセッション';
 
         await Notifications.scheduleNotificationAsync({
+          identifier: NOTIFICATION_ID,
           content: {
             title: APP_NAME,
             body: `${LEAD_MINUTES}分後: ${title}`,
