@@ -143,7 +143,7 @@ Sleep Model / Exercise Model / HealthKit / Google Fit / Global Priors（ユー�
 
 ## 8. 近期の重点（検証フェーズ・2026-07-02時点）
 
-コードの実装量は既に多い（約22,660行、型チェック0エラー、テスト132件、TestFlight/Android APKでベータ稼働中）。**したがって現フェーズは「作る」ではなく「検証して尖らせる」。** 新機能を追加する前に、まず中核ループが実際に価値を生んでいるかを確かめる。
+コードの実装量は既に多い（型チェック0エラー、テスト35スイート・211件、Web版/Android APKでベータ稼働中。iOS TestFlight は見送り中）。**したがって現フェーズは「作る」ではなく「検証して尖らせる」。** 新機能を追加する前に、まず中核ループが実際に価値を生んでいるかを確かめる。
 
 ### 北極星（3ヶ月・検証可能な形に具体化）
 
@@ -153,12 +153,18 @@ Sleep Model / Exercise Model / HealthKit / Google Fit / Global Priors（ユー�
 >
 > これが10人の本気のベータユーザーで成り立てば、コンセプトは検証済みでスケールする価値がある。成り立たないなら、新機能をいくら足しても直らない。
 
-### 検証済みの構造的リスク（コードで裏取り済み）
+### 構造的リスク2点 — ロジック側は解決済み（2026-07-02修正 / 2026-09-03に実コードで再確認）
 
-学習ループ自体（`completeSession`/`saveReflection` → `LearningPipeline` 発火 → EMA更新）は本物で、イベント駆動で実際に一周している。しかし価値が漏れる穴が2つ、コードで確認されている:
+学習ループ自体（`completeSession`/`saveReflection` → `LearningPipeline` 発火 → EMA更新）は本物で、イベント駆動で実際に一周している。かつてここに価値が漏れる穴が2つあったが、**いずれも 2026-07-02 のコミットで修正済み**。記録として経緯と現在の実装を残す。
 
-1. **実行フィデリティの穴（最大リスク）** — [`OutcomeDeriver.ts`](../src/intelligence/outcome/OutcomeDeriver.ts) の `resolveActualMinutes()` は `actualStart`/`actualEnd` が無いと見積時間へフォールバックする。つまり**タイマーを回さずに完了操作だけした場合、`estimationRatio≈1.0`・`focusScore=1.0`＝「完璧な一日」として無信号のまま学習される。** ユーザーがアプリ内で開始→実行→完了を通さない限り、UserModel はデフォルトから動かない。
-2. **欠測日の誤学習** — [`DailyFeatureExtractor.ts`](../src/intelligence/learning/DailyFeatureExtractor.ts) の `procrastinationScore` はアウトカムが無い日は `0`（＝先延ばしゼロ）になり、`UserModelUpdater.ts` の EMA でそのまま `procrastinationIndex` に反映される。**何もしなかった日を「良い日」として学習してしまう。**
+1. **実行フィデリティの穴（旧・最大リスク）— ロジックは解決済み。残るはUI動線のみ**
+   - 旧: [`OutcomeDeriver.ts`](../src/intelligence/outcome/OutcomeDeriver.ts) の `resolveActualMinutes()` は `actualStart`/`actualEnd` が無いと見積時間へフォールバックするため、タイマーを回さず完了操作だけした場合に `estimationRatio≈1.0`・`focusScore=1.0`＝「完璧な一日」として無信号のまま学習されていた。
+   - 現: `SessionOutcome` に `timerUsed: boolean` を追加。[`DailyFeatureExtractor.ts`](../src/intelligence/learning/DailyFeatureExtractor.ts) が `hasTimerSignal()` で `timedSessions` を分離し、**時間・遅刻・集中スコア・見積り誤差・エネルギースロットの学習は `timerUsed === true` の outcome のみ**を使う。`completionRate` だけは手動完了も意味を持つため意図的に全 outcome ベースのまま。
+   - **未了なのはUI側** — 「開始→集中→完了をアプリ内で必ず通す」動線の強化（優先順位1）。ロジックが正しくても、タイマーを回してもらえなければ学習信号は入らない。
+
+2. **欠測日の誤学習 — 解決済み**
+   - 旧: `procrastinationScore` はアウトカムが無い日は `0`（＝先延ばしゼロ）になり、EMA でそのまま `procrastinationIndex` に反映され、何もしなかった日を「良い日」として学習していた。
+   - 現: `DailyFeatures` に `timedOutcomeCount` を追加し、`UserModelUpdater.update()` が `features.timedOutcomeCount > 0` で `procrastinationIndex` の EMA 更新をガードする。信号が成立しない日は現状維持。
 
 ### コールドスタート（"2週間の谷"）
 
@@ -166,10 +172,12 @@ EMA学習率0.2では、デフォルトから意味のある差になるまで�
 
 ### 優先順位（作るより検証。上ほど先）
 
-1. **実行フィデリティの穴を塞ぐ** — 開始→集中→完了をアプリ内で必ず通す動線を磨き、`OutcomeDeriver`/`DailyFeatureExtractor` に欠測日の学習ガードを入れる。★差別化そのものを守る最優先事項。申し送りの「90分分割バグ」調査はこの入口（プランがおかしいとタイマーを回してもらえない）。
-2. **学習の可視化** — 毎日「今日の学び＋それで予定がどう変わったか」を1行見せる面を作る（`reasonLabels`/`learningNotes` の土台は既存）。学習は不可視なので、見せなければ体感されず離脱する。
-3. **Task Proposal Engine を仕上げて、いったん新機能追加を止める。**
-4. **計測を入れる** — `actualStart` の発生率、2週間リテンションなど、北極星を判定するための最小計測。
+> **2026-09-03 追記:** 下の順序は 4（計測）を先頭に繰り上げる。**計測が無いと 1〜3 の施策に効果があったかを判定できない**（例: 動線を強化しても `actualStart` 発生率が上がったか分からない）。詳細な段取りはプロジェクトの「Orbit Looper ロードマップ」Phase 1 を参照。
+
+1. **計測を入れる**（← 繰り上げ） — `actualStart` の発生率、タイマー信号の入った日の割合、再計画の適用率、継続日数など、北極星を判定するための最小計測。**実装は `intelligence/metrics/` に、既存の永続化データ（Session / DailyFeatures / DecisionLog）からの純粋な導出として置く**（新しいイベント基盤を作らない＝ローカルファースト原則を一切壊さず、既存ユーザーのデータに遡って効く）。
+2. **実行フィデリティの穴を塞ぐ** — ロジック側（`timerUsed` ガード）は解決済みなので、**残るは「開始→集中→完了をアプリ内で必ず通す」UI動線の強化**。★差別化そのものを守る最優先事項。
+3. **学習の可視化** — 毎日「今日の学び＋それで予定がどう変わったか」を1行見せる面を作る（`reasonLabels`/`learningNotes` の土台は既存）。学習は不可視なので、見せなければ体感されず離脱する。
+4. **Task Proposal Engine を仕上げて、いったん新機能追加を止める。**
 5. **少数ベータ＋自分で2週間ドッグフーディング** し、北極星にYes/Noを出す。
 6. **課金設計の見直し** — 現状 `aiEntitlement` はGemini機能（コーチ等）に寄せているが、設計原則上コアはローカルで無料。差別化が薄いGeminiラッパーではなく、**差別化コア（学習インサイトの深さ・履歴・複数端末同期・高度な再計画）に課金を寄せる**方が筋が良い（データが端末ローカルのAsyncStorage＝機種変更で消える点も、同期を有料コアにする根拠）。
 

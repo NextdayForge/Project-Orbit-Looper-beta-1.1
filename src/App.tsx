@@ -29,6 +29,7 @@ import { FocusMode, FocusBrief } from './components/focus/FocusMode';
 import { ReplanProposalModal } from './components/replan/ReplanProposalModal';
 import { buildAiReplanProposal, buildReplanProposal, ReplanProposal } from './intelligence/planner/replanDiff';
 import { buildEveningReflectionQuestion } from './intelligence/reflection/eveningQuestion';
+import { computeNorthStarMetrics, formatMetricsReport } from './intelligence/metrics';
 import { MiddayAdjustmentResult } from './types/dayPlan';
 
 import { ReflectionModal } from './components/reflection/ReflectionModal';
@@ -592,6 +593,15 @@ function AppContent() {
     await exportAppData();
   }, [exportAppData]);
 
+  /**
+   * 北極星判定用の計測。保存済み Session からの純粋な導出なので、
+   * 新しい記録を始めなくても既存のデータに遡って効く（設計原則5を壊さない）。
+   */
+  const metricsReport = useMemo(
+    () => formatMetricsReport(computeNorthStarMetrics(sessions)),
+    [sessions]
+  );
+
   const handleResetData = useCallback(async () => {
     await resetAllData();
     dayPlanHook.clearDayPlan();
@@ -731,6 +741,7 @@ function AppContent() {
             onShowOnboarding={ui.openOnboarding}
             onExportData={handleExportData}
             onResetData={handleResetData}
+            metricsReport={metricsReport}
           />
 
         )}

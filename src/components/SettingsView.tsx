@@ -26,7 +26,7 @@ import {
 } from '../config/aiEntitlement';
 import { BETA_FORCE_PRO_PLAN, isLooperAiProxyConfigured } from '../config/cloudAiProxy';
 import { APP_AI_LABEL, APP_NAME, APP_PRO_PLAN } from '../config/brand';
-import { BETA_FEEDBACK_URL } from '../config/betaConfig';
+import { BETA_FEEDBACK_URL, betaFeedbackUrlWithReport } from '../config/betaConfig';
 
 function appVersionLabel(): string {
   const version =
@@ -42,6 +42,11 @@ interface SettingsViewProps {
   onShowOnboarding?: () => void;
   onExportData?: () => Promise<void>;
   onResetData?: () => Promise<void>;
+  /**
+   * 北極星判定用の計測レポート（`intelligence/metrics` で生成した整形済みテキスト）。
+   * 端末内で計算した集計のみ。自動送信はしない。
+   */
+  metricsReport?: string;
 }
 
 function Stepper({
@@ -88,6 +93,7 @@ export function SettingsView({
   onShowOnboarding,
   onExportData,
   onResetData,
+  metricsReport,
 }: SettingsViewProps) {
   const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
@@ -604,6 +610,30 @@ export function SettingsView({
             TestFlight ベータ版です。不具合や改善のご意見をお寄せください。
           </Text>
         </View>
+        {metricsReport ? (
+          <>
+            <View style={styles.separator} />
+            <View style={styles.betaBody}>
+              <Text style={styles.rowLabel}>計測レポート</Text>
+              <Text style={styles.metricsReport} selectable>
+                {metricsReport}
+              </Text>
+              <TouchableOpacity
+                style={styles.linkRow}
+                onPress={() => {
+                  void Linking.openURL(betaFeedbackUrlWithReport(metricsReport));
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.linkText}>このレポートを添えて送る ›</Text>
+              </TouchableOpacity>
+              <Text style={styles.betaNote}>
+                この端末に保存された記録だけから集計しています。タスク名やふりかえりの本文は含まれません。
+                送信するかどうかはメーラー上でご自身で決められます。
+              </Text>
+            </View>
+          </>
+        ) : null}
       </View>
 
       <View style={[styles.card, styles.infoCard]}>
@@ -730,6 +760,12 @@ const makeStyles = (theme: Theme) =>
     },
     betaBody: { padding: 14, gap: 10 },
     betaNote: { fontSize: 12, lineHeight: 18, color: theme.textTertiary },
+    metricsReport: {
+      fontSize: 12,
+      lineHeight: 18,
+      color: theme.textSecondary,
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    },
     apiKeyInput: {
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: theme.separator,
