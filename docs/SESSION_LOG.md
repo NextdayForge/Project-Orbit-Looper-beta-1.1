@@ -5,6 +5,79 @@
 
 ---
 
+## 2026-09-05
+
+### 実機確認、完走（Androidエミュレータを新規構築 → 5項目すべてグリーン）
+
+前日（9/4）はAndroid実機がユーザー手元に無いためWeb版で代替検証し、項目4（起床通知）とプロキシ経由の項目2は持ち越しとした。今回ユーザーから「Claudeさんに確認してもらう方法か、iOSでの検証方法」を問われ、**このマシン（Windows）にAndroid SDK・エミュレータを新規構築し、ADB経由で完全に自動操作する**方針を選択した（iOSはApple Developer Program未加入かつこのマシンにMac/iPhoneが無いため、実機が無い問題を解決しないと判断し却下）。
+
+**構築した環境（`C:\Users\naoki\android-dev\` 配下、リポジトリ外）:**
+- Temurin JDK 17（zip版、ポータブル。インストーラ不要）
+- Android cmdline-tools（`commandlinetools-win-11076708_latest.zip`）→ `Sdk/cmdline-tools/latest`
+- `platform-tools` / `platforms;android-34` / `system-images;android-34;google_apis;x86_64` / `emulator` を sdkmanager でインストール
+- AVD `orbit_test`（Pixel 6, API34, x86_64）を作成し `-no-window -gpu swiftshader_indirect` でヘッドレス起動（55秒でブート完了。このマシンは仮想化基盤が有効でWHPXアクセラレーションが効いた）
+- APK本体は `eas build:view 9ba7eada... --json` の `artifacts.applicationArchiveUrl` から直接ダウンロード（`https://expo.dev/artifacts/eas/....apk`、EXPO_TOKEN認証で取得したURLだが、ダウンロード自体はブラウザ不要・curlのみ）→ `adb install`
+
+**画面操作はブラウザではなく素のADBで完結させた**（computer-use権限を使わず、Bashツールのみ）。`adb shell input tap/swipe/text` と `adb exec-out screencap -p` の往復で全操作を実施。日本語テキストは `input text` では文字化けするため、アプリのクイック返信チップをタップする方式で代替。
+
+**踏んだ落とし穴（次回のために記録）:**
+- スクリーンショットからの座標目視推定は大きく外れることがある（フォーカスモードの完了ボタンで実測 y=2210 のところを y=1646 と見誤り、2回タップ失敗した）。**静止画面は `adb shell uiautomator dump` + `grep bounds` で正確な座標を取得すること。** アニメーション中の画面（タイマーのカウントダウン等）は dump が `could not get idle state` で失敗するので、その場合は PowerShell の `System.Drawing.Bitmap.GetPixel` でピクセル色を直接スキャンして境界を特定する方が確実。
+- Android の時刻スピナー（NumberPickerDialog）はタップでは値が変わらず、フィールドをタップして数字キーボードを出し `adb shell input keyevent`（1桁ずつ、`input text` の複数文字は最初の1文字しか反映されないことがあった）で直接入力するのが確実だった。
+- PowerShell の `> file.png` でバイナリ(PNG)をリダイレクトすると文字コード変換で壊れる。screencapの保存は必ずBashツール側で行うこと。
+- `.claude/launch.json` はこのプロジェクトでは**リポジトリのある `Project-Orbit-Loop-beta-1-demo-main` ではなく親ディレクトリ `C:\Users\naoki\Project-Orbit-Looper` 側**に置く必要がある（Claude Codeのプライマリ作業ディレクトリがそちらのため）。既存の `web-dist`（`dist/` の静的配信、7/4の古いエクスポート）設定と衝突しないよう `orbit-looper-web-dev` を別名で追加した。
+
+### 検証結果（5項目すべて実機相当環境で確認・グリーン）
+
+| # | 項目 | 結果 |
+|---|---|---|
+| 1 | インストール→起動 | ✅ `adb install` 成功 → 起動 → オンボーディング表示 |
+| 2 | AIコーチがGemini応答（**プロキシ経由**） | ✅ 設定画面に「接続状態: Orbit Looper AI（ベータ・プロキシ）利用可」と明示表示。チャットでタスク登録を依頼すると、ローカルフォールバックの定型文（`localCoach.ts`/`coachIntent.ts` に無い文面）とは異なる自然文が返り、実際にセッションへ組み込まれた → 実機のプロキシ経路が生きていることを確認。9/4に持ち越した「ローカル`.env`のBETA_TOKENでcurlすると401」問題は、EAS側に別途設定された環境変数がありローカル`.env`とは無関係に動いている可能性が高いと判明（実機側が正常動作したため実害なしと判断。ただしローカル`.env`とEAS/Workerの値が乖離している事実は残っており、開発時のcurl検証には使えない点は留意） |
+| 3 | 設定→ベータ→計測レポート | ✅ 仕様通り表示 |
+| 4 | 起床通知DAILY発火・ヘッドアップ表示 | ✅ 起床時刻を07:20（当時7:15、5分後）に変更 → `adb shell dumpsys alarm` で `RTC_WAKEUP` アラーム（`tag=expo.modules.notifications.NOTIFICATION_EVENT`, `origWhen=2026-09-05 07:20:00.000`）がOSに登録されていることを確認 → `dumpsys notification` で `looper-wake` チャンネルの `mImportance=5`（=IMPORTANCE_MAX）を確認 → 7分待機後、ホーム画面上部に実際のヘッドアップ通知バナー「Orbit Looper — おはようございま…／Orbit Looperを開いて今日の予定を準備し…」が表示されるのを screencap で確認。段階1（アプリ未起動時の一般文言）の実データでの動作確認が取れた |
+| 5 | タスク登録→タイマー開始→完了→タイマー開始率反映 | ✅ AIコーチで「英語の勉強」を登録 → フォーカスモードでタイマー開始 → 完了 → 計測レポートの「タイマー開始率」が `0%(0/1)` → `100%(1/1)` に変化するのを確認 |
+
+**7/07から持ち越していた新APK `9ba7eada…` の実機確認が、これで完全に完了した。**
+
+### 後片付け・今後
+- `C:\Users\naoki\android-dev\`（JDK・SDK・AVD・APK、合計数GB）はこのマシンに残置。次回同様の検証で再利用できる。不要になれば削除してよいが、リポジトリ外なのでgit管理には影響しない。
+- 親ディレクトリの `.claude/launch.json` に追加した `orbit-looper-web-dev` 設定はそのまま残す（Web版の簡易確認に今後も使える）。
+
+### 次回への申し送り
+1. **`docs/lt-assets/` の QR と `LT_HANDOUT.md` を新ビルドID `9ba7eada-4bf8-4548-b401-56f1ff71f0ef` に更新する。** 現状は古いビルドを指している。
+2. Phase 2（実行フィデリティのUI動線強化）へ。計測が実機で機能することが確認できたので、施策の前後で「タイマー開始率」を比較できる。
+3. 未確定のまま: `ayosh` 機のローカル未pushコミットの有無。Vercel 二重プロジェクトの一本化。ローカル `.env` の `EXPO_PUBLIC_LOOPER_AI_BETA_TOKEN` とEAS/Cloudflare Worker側の実際の値が一致しているかは未確認（実害は無さそうだが、いつか揃えておくと開発時のcurl検証がしやすくなる）。
+
+---
+
+## 2026-09-04
+
+### 実機確認（Android端末なし → Web版で代替検証）
+
+前回セッションの申し送り「新APK `9ba7eada…` を実機で通す」に着手しようとしたところ、**この端末を操作しているユーザーは Android 実機を所有していない**ことが判明。ADB・Android SDK・エミュレータもこのマシンには未導入。Windows の「スマートフォン連携」（画面ミラーリング）も試したがユーザーが権限ダイアログを拒否したため使用不可。
+
+方針転換: このプロジェクトは `react-native-web` 対応（`npm run web` = `expo start --web`、Vercel配信もこの経路）なので、**Claude Code 自身が Web 版をブラウザ操作で検証する**方式に切り替えた。`.claude/launch.json`（`C:\Users\naoki\Project-Orbit-Looper\.claude\launch.json`、リポジトリの親ディレクトリ側。既存の `web-dist`（`dist/` の静的配信＝7/4時点の古いエクスポートで計測・起床通知を含まない）とは別に `orbit-looper-web-dev` を追加。`cmd /c cd /d Project-Orbit-Loop-beta-1-demo-main && npx expo start --web --port 8081` でソース直読みの dev サーバーを起動する構成）を新設し、Browser pane から `localhost:8081` を直接操作した。
+
+**申し送りの5項目のうち、4項目をこの方法で検証できた:**
+
+| # | 項目 | 結果 |
+|---|---|---|
+| 1 | インストール→起動 | Web版は「インストール」相当の概念がないが、起動・オンボーディング・Todayホームの表示は正常 |
+| 2 | AIコーチがGemini応答 | **確認**。`window.fetch` をフックして実ネットワーク呼び出しを捕捉 → `generativelanguage.googleapis.com` へのPOSTが `status: 200`。応答文面もUserModelの実データ（平均集中時間・先延ばし傾向）を反映した自然文で、ローカルフォールバックのテンプレ文言とは一致しない＝実際にGemini経由と確認 |
+| 3 | 設定→ベータ→計測レポート | **確認**。ラベル・整形テキストとも仕様通り表示 |
+| 4 | 起床通知DAILY発火・ヘッドアップ | **未検証**（後述） |
+| 5 | タスク登録→タイマー開始→完了→タイマー開始率反映 | **確認**。AIコーチ経由で「買い物リストの整理」を登録→タイマー開始→完了まで一通り操作 → 計測レポートの「タイマー開始率」が `0% (0/1)` → `100% (1/1)` に変化するのを実際に確認した |
+
+**項目4（起床通知のDAILY発火・ヘッドアップ表示）は原理的にWeb版で検証不可。** `expo-notifications` のスケジュール通知（DAILYトリガー・Android通知チャンネルのimportance:MAX）はネイティブAPIで、Web実装は同フックが呼ばれても実質何もしない（コンソールに `[expo-notifications] Listening to push token changes is not yet fully supported on web` の警告が出る程度）。Android実機かエミュレータでしか確認できない。
+
+**副産物として発見した懸念（未解決）:** 検証項目2で使ったのはWeb版の経路（`resolveGeminiConfig.ts` の設計方針により **Web版は意図的にLooperプロキシを使わず、直接Gemini APIキーを使う**——プロキシトークンが公開バンドルに漏れるのを避けるため）。そのため今回の確認は「Gemini連携ロジックそのものが動く」ことの証明にはなるが、**実機APK（preview プロファイル）が使う `Cloudflare Worker プロキシ経由`の経路は未検証のまま**。ついでにローカル `.env` の `EXPO_PUBLIC_LOOPER_AI_BETA_TOKEN` を使って `https://looper-gemini-proxy.nextdayforge.workers.dev/v1/generate` に直接 curl したところ **`401 Unauthorized`** が返った（CRLF混入等の切り分け済み、トークン自体は byte-exact で64バイト一致を確認）。`eas env:list --environment preview` で EAS 側にも同名の環境変数が別途設定されていることは確認できたが、値の一致確認はトークンをターミナル出力させる操作になるため許可分類器にブロックされ、それ以上は追わなかった。**この401がCloudflare Worker側の `BETA_TOKEN` シークレット未設定/ローテーション起因なのか、単にローカル`.env`がEAS環境変数と乖離しているだけなのかは未確定。実機での「AIコーチが応答するか」の確認（項目2の本来の対象）はこの理由からも依然として価値がある。**
+
+### 次回への申し送り
+1. **項目4（起床通知）と、プロキシ経由でのGemini応答（項目2の本来の対象）は、依然として実機かAndroidエミュレータでの確認が必要。** ユーザーはAndroid実機を持っていない。選択肢: (a) 借りられる Android 端末で確認, (b) Claude が Android SDK + エミュレータをこのマシンに新規セットアップし ADB 経由（画面ミラーリング権限不要）で完結させる（ダウンロード量・所要時間はそれなり）, (c) iOS版を新たに作る（Apple Developer Program 未加入と推測され、かつこのマシンはWindowsでMac/実機がないため、そもそも同じ「実機がない」問題を解決しない。現実的な選択肢ではない）。
+2. **プロキシの401を解消する。** `wrangler secret list` 等でCloudflare Worker側の `BETA_TOKEN` が現在何を指しているか確認し、EAS環境変数・ローカル`.env`と一致させる。
+3. `docs/lt-assets/` のQRと`LT_HANDOUT.md`のビルドID更新、Phase 2着手は上記が片付いてから。
+
+---
+
 ## 2026-09-03
 
 ### 経緯（5週間の停滞の確認 → ドキュメント是正 → 計測の実装）
@@ -94,11 +167,33 @@ UI は設定 → ベータ に追加した。`SettingsView` に任意 prop `metr
 - Vercel 二重プロジェクト（`orbit-looper-red` / `iwashita-naos-projects/orbit-looper`）の一本化。
 - expo.dev のビルド履歴未確認（`asuforge` へのログインが必要）。8月にAPKが焼かれたかはここで確定する。
 
+### 同日の続き: コミット・push・APK再ビルドまで完了
+
+一時ファイルを削除のうえ、変更一式を **コミット `0566484` として push 済み**（11ファイル / +690 / -12）。
+
+**Android APK の再ビルドに成功した。36日ぶりに詰まりが解消。**
+
+| | |
+|---|---|
+| ビルドID | **`9ba7eada-4bf8-4548-b401-56f1ff71f0ef`** |
+| インストール用URL | `https://expo.dev/accounts/asuforge/projects/orbit-looper/builds/9ba7eada-4bf8-4548-b401-56f1ff71f0ef` |
+| プロファイル | preview（開発者キーが焼き込まれるため、AIはキー入力なしで動くはず） |
+| 認証 | `$env:EXPO_TOKEN` に `.env` の値を読み込む方式で成功（7/29 に確立した手順のまま有効） |
+
+**このAPKは計測機能を含む最初のビルド。** 前ビルド `dc583766…` は 2026-07-07 のもので、以降の全変更（起床通知・計測）が入っていない。配布資料が指すビルドを差し替える必要がある。
+
+**PowerShell 固有の落とし穴（記録）:** `git push` 後に `git commit --amend` を実行してしまい、ローカルとリモートが枝分かれした（amend はコミットを作り直すため）。ツリーは同一でメッセージだけの差だったので `git reset --hard origin/main` で解消。**push 済みのコミットに amend をかけないこと。**
+
 ### 次回への申し送り
-1. **リポジトリ直下の `verify-orbit.bat` / `verify-output.txt` を削除する**（検証用の一時ファイル）。あわせて今回の変更をコミットすること（コンテナ側のコミット `e49c84e` のメッセージを流用してよい）。ベースラインは検証済みなので再実行は不要。
-2. **Android APK を再ビルドする。** EAS の枠は復活済み。`export EXPO_TOKEN=$(grep '^EXPO_TOKEN=' .env | cut -d= -f2-)` → `eas build --platform android --profile preview --non-interactive`。完了後 `docs/lt-assets/` の QR・`LT_HANDOUT.md` を新ビルドIDに更新。
-3. **実機で1回通す。** インストール → 起動 → Gemini応答 → 起床通知の DAILY 発火（7/29 からの持ち越し）。
-4. その後 Phase 2（実行フィデリティのUI動線強化）へ。**計測が入ったので、動線を変えた効果をタイマー開始率で判定できるようになった。**
+1. **新APK `9ba7eada…` を実機で通す**（7/07 からの持ち越しがここで解消できる）。確認する順:
+   1. インストール → 起動
+   2. AIコーチが Gemini 応答を返す
+   3. **設定 → ベータ → 「計測レポート」が表示される**（今回追加。ここが出れば計測のUI配線は実機で成立）
+   4. 起床通知が DAILY で発火し、`importance: MAX` でヘッドアップ表示される（設定の起床時刻を数分後にして確認するのが早い）
+   5. **タスク登録 → タイマー開始 → 完了 → 計測レポートの「タイマー開始率」が動く。** ここまで通れば、計測が実データで機能することの端から端までの確認になる
+2. **`docs/lt-assets/` の QR と `LT_HANDOUT.md` を新ビルドID `9ba7eada-4bf8-4548-b401-56f1ff71f0ef` に更新する。** 現状は古いビルドを指している。
+3. その後 Phase 2（実行フィデリティのUI動線強化）へ。**計測が入ったので、動線を変えた効果をタイマー開始率で判定できるようになった。** 施策の前後で数字を比べること。
+4. 未確定のまま: `ayosh` 機のローカル未pushコミットの有無（`git log origin/main..HEAD --oneline` で確認）。Vercel 二重プロジェクトの一本化。
 
 ---
 
