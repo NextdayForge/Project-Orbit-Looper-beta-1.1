@@ -1,9 +1,13 @@
 import { Session, isDayProgressSession, isSessionCompleted } from '../../types/session';
-import { parseDateKey } from '../../utils/time';
+import { addDays, parseDateKey, toDateKey } from '../../utils/time';
 import {
+  DailyMetrics,
   ExecutionFidelityMetrics,
   LearningSignalMetrics,
+  MetricsPeriod,
   NorthStarMetrics,
+  PeriodComparison,
+  RateDelta,
   ReplanMetrics,
   RetentionMetrics,
 } from './types';
@@ -21,6 +25,11 @@ function dayDiff(fromKey: string, toKey: string): number {
   const from = parseDateKey(fromKey).getTime();
   const to = parseDateKey(toKey).getTime();
   return Math.round((to - from) / MS_PER_DAY);
+}
+
+/** 前日の日付キー。期間の「後」の開始日から「前」の終了日を作るのに使う。 */
+function previousDateKey(dateKey: string): string {
+  return toDateKey(addDays(parseDateKey(dateKey), -1));
 }
 
 /** タイマーを実際に回した証跡。`actualStart` が入っていれば開始操作を通っている。 */
@@ -140,23 +149,120 @@ function computeRetention(activeDates: string[]): RetentionMetrics {
   };
 }
 
+/** 日付キーが期間に入るか（両端を含む。文字列比較で足りる YYYY-MM-DD 前提）。 */
+function inPeriod(date: string, period?: MetricsPeriod): boolean {
+  if (!period) return true;
+  if (period.from && date < period.from) return false;
+  if (period.to && date > period.to) return false;
+  return true;
+}
+
+/**
+ * 日別の系列。セッションが1件以上ある日のみを日付昇順で返す。
+ * 施策の前後で「折れ線に段差が出たか」を見るためのもの。
+ */
+function computeDailySeries(sessions: Session[]): DailyMetrics[] {
+  const byDate = new Map<string, Session[]>();
+  for (const session of sessions) {
+    const list = byDate.get(session.date) ?? [];
+    list.push(session);
+    byDate.set(session.date, list);
+  }
+
+  return Array.from(byDate.keys())
+    .sort()
+    .map((date) => {
+      const daySessions = byDate.get(date) ?? [];
+      const progress = daySessions.filter(isDayProgressSession);
+      const started = progress.filter(hasActualStart);
+      const completed = progress.filter(isSessionCompleted);
+      const timedCompleted = completed.filter(hasTimerSignal);
+
+      return {
+        date,
+        plannedSessionCount: progress.length,
+        startedSessionCount: started.length,
+        actualStartRate: rate(started.length, progress.length),
+        completedSessionCount: completed.length,
+        timedCompletedSessionCount: timedCompleted.length,
+        timedCompletionRate: rate(timedCompleted.length, completed.length),
+        hasLearningSignal: daySessions.some(hasTimerSignal),
+        rescheduledSessionCount: daySessions.filter(
+          (session) => session.status === 'rescheduled'
+        ).length,
+      };
+    });
+}
+
 /**
  * 保存済みの Session だけから北極星の判定材料を導出する。
  *
  * 新しい計測イベントを一切記録しないので、**既に手元にあるデータへ遡って**効く。
  * 端末外への送信は行わない（設計原則5）。
+ *
+ * @param period 省略すると全期間。施策の前後を切り分けるときに指定する。
  */
-export function computeNorthStarMetrics(sessions: Session[]): NorthStarMetrics {
+export function computeNorthStarMetrics(
+  sessions: Session[],
+  period?: MetricsPeriod
+): NorthStarMetrics {
+  const scoped = period
+    ? sessions.filter((session) => inPeriod(session.date, period))
+    : sessions;
+
   const activeDates = sortedUnique(
-    sessions.filter(hasInteraction).map((session) => session.date)
+    scoped.filter(hasInteraction).map((session) => session.date)
   );
 
   return {
     fromDate: activeDates[0] ?? null,
     toDate: activeDates[activeDates.length - 1] ?? null,
-    execution: computeExecution(sessions),
-    learning: computeLearning(sessions, activeDates),
-    replan: computeReplan(sessions, activeDates),
+    execution: computeExecution(scoped),
+    learning: computeLearning(scoped, activeDates),
+    replan: computeReplan(scoped, activeDates),
     retention: computeRetention(activeDates),
+    daily: computeDailySeries(scoped),
+  };
+}
+
+function delta(before: number | null, after: number | null): RateDelta {
+  return {
+    before,
+    after,
+    delta: before == null || after == null ? null : after - before,
+  };
+}
+
+/**
+ * 施策の前後を比べる。`splitDate`（施策を入れた日）**を含む日以降**が「後」。
+ *
+ * 注意: これは n=1 の観察であって対照実験ではない。数字が動かなければ仮説を棄却できるが、
+ * 動いたとしても動線改善の効果か UserModel の成熟かは分離できない。
+ */
+export function compareAroundDate(
+  sessions: Session[],
+  splitDate: string,
+  period?: MetricsPeriod
+): PeriodComparison {
+  const before = computeNorthStarMetrics(sessions, {
+    from: period?.from,
+    to: previousDateKey(splitDate),
+  });
+  const after = computeNorthStarMetrics(sessions, {
+    from: splitDate,
+    to: period?.to,
+  });
+
+  return {
+    splitDate,
+    before,
+    after,
+    actualStartRate: delta(before.execution.actualStartRate, after.execution.actualStartRate),
+    timedCompletionRate: delta(
+      before.execution.timedCompletionRate,
+      after.execution.timedCompletionRate
+    ),
+    learningDayRate: delta(before.learning.learningDayRate, after.learning.learningDayRate),
+    replanDayRate: delta(before.replan.replanDayRate, after.replan.replanDayRate),
   };
 }

@@ -1,5 +1,11 @@
-import { computeNorthStarMetrics } from '../intelligence/metrics/northStarMetrics';
-import { formatMetricsReport } from '../intelligence/metrics/metricsReport';
+import {
+  compareAroundDate,
+  computeNorthStarMetrics,
+} from '../intelligence/metrics/northStarMetrics';
+import {
+  formatComparisonReport,
+  formatMetricsReport,
+} from '../intelligence/metrics/metricsReport';
 import { SessionOutcome } from '../types/session';
 import { makeSession } from './fixtures';
 
@@ -175,6 +181,154 @@ describe('computeNorthStarMetrics', () => {
 
     expect(retention.activeDayCount).toBe(1);
     expect(retention.longestStreakDays).toBe(1);
+  });
+});
+
+describe('期間指定', () => {
+  const sessions = [
+    makeSession({ date: '2026-07-01', actualStart: 'x' }),
+    makeSession({ date: '2026-07-05' }),
+    makeSession({ date: '2026-07-10', actualStart: 'x' }),
+  ];
+
+  it('from / to の両端を含む', () => {
+    const m = computeNorthStarMetrics(sessions, { from: '2026-07-05', to: '2026-07-10' });
+
+    expect(m.execution.plannedSessionCount).toBe(2);
+    expect(m.execution.startedSessionCount).toBe(1);
+    expect(m.execution.actualStartRate).toBeCloseTo(0.5);
+  });
+
+  it('from だけ・to だけの指定も効く', () => {
+    expect(
+      computeNorthStarMetrics(sessions, { from: '2026-07-06' }).execution.plannedSessionCount
+    ).toBe(1);
+    expect(
+      computeNorthStarMetrics(sessions, { to: '2026-07-04' }).execution.plannedSessionCount
+    ).toBe(1);
+  });
+
+  it('期間を省略すると全期間', () => {
+    expect(computeNorthStarMetrics(sessions).execution.plannedSessionCount).toBe(3);
+  });
+
+  it('範囲外しか無ければ空の結果になる', () => {
+    const m = computeNorthStarMetrics(sessions, { from: '2026-08-01' });
+
+    expect(m.execution.actualStartRate).toBeNull();
+    expect(m.daily).toHaveLength(0);
+    expect(m.fromDate).toBeNull();
+  });
+});
+
+describe('日別系列', () => {
+  it('セッションのある日だけを日付昇順で返す', () => {
+    const m = computeNorthStarMetrics([
+      makeSession({ date: '2026-07-03', actualStart: 'x' }),
+      makeSession({ date: '2026-07-01' }),
+      makeSession({ date: '2026-07-01', actualStart: 'x' }),
+    ]);
+
+    expect(m.daily.map((d) => d.date)).toEqual(['2026-07-01', '2026-07-03']);
+    expect(m.daily[0].actualStartRate).toBeCloseTo(0.5);
+    expect(m.daily[1].actualStartRate).toBeCloseTo(1);
+  });
+
+  it('その日に学習信号があったかを持つ', () => {
+    const m = computeNorthStarMetrics([
+      makeSession({
+        date: '2026-07-01',
+        status: 'completed',
+        completed: true,
+        outcome: outcome({ timerUsed: true }),
+      }),
+      makeSession({
+        date: '2026-07-02',
+        status: 'completed',
+        completed: true,
+        outcome: outcome({ timerUsed: false }),
+      }),
+    ]);
+
+    expect(m.daily[0].hasLearningSignal).toBe(true);
+    expect(m.daily[1].hasLearningSignal).toBe(false);
+  });
+
+  it('rescheduled は進捗の分母から外れるが日別の再計画数には出る', () => {
+    const m = computeNorthStarMetrics([
+      makeSession({ date: '2026-07-01', status: 'rescheduled' }),
+      makeSession({ date: '2026-07-01', actualStart: 'x' }),
+    ]);
+
+    expect(m.daily[0].plannedSessionCount).toBe(1);
+    expect(m.daily[0].rescheduledSessionCount).toBe(1);
+  });
+});
+
+describe('compareAroundDate', () => {
+  const sessions = [
+    // 施策前: 4件中1件だけ開始（25%）
+    makeSession({ date: '2026-07-01', actualStart: 'x' }),
+    makeSession({ date: '2026-07-01' }),
+    makeSession({ date: '2026-07-02' }),
+    makeSession({ date: '2026-07-02' }),
+    // 施策後: 4件中3件開始（75%）
+    makeSession({ date: '2026-07-10', actualStart: 'x' }),
+    makeSession({ date: '2026-07-10', actualStart: 'x' }),
+    makeSession({ date: '2026-07-11', actualStart: 'x' }),
+    makeSession({ date: '2026-07-11' }),
+  ];
+
+  it('splitDate 当日は「後」に含む', () => {
+    const c = compareAroundDate(sessions, '2026-07-10');
+
+    expect(c.before.execution.plannedSessionCount).toBe(4);
+    expect(c.after.execution.plannedSessionCount).toBe(4);
+  });
+
+  it('前後の率と差分を出す', () => {
+    const c = compareAroundDate(sessions, '2026-07-10');
+
+    expect(c.actualStartRate.before).toBeCloseTo(0.25);
+    expect(c.actualStartRate.after).toBeCloseTo(0.75);
+    expect(c.actualStartRate.delta).toBeCloseTo(0.5);
+  });
+
+  it('片側にデータが無ければ差分は null', () => {
+    const c = compareAroundDate(sessions, '2026-06-01');
+
+    expect(c.before.execution.actualStartRate).toBeNull();
+    expect(c.actualStartRate.delta).toBeNull();
+  });
+
+  it('累積では薄まる改善を、期間を切ると正しく捉える', () => {
+    // 前に大量の低い実績があると、累積値は改善を過小評価する
+    const many = Array.from({ length: 20 }, () => makeSession({ date: '2026-07-01' }));
+    const few = Array.from({ length: 4 }, () =>
+      makeSession({ date: '2026-07-10', actualStart: 'x' })
+    );
+    const all = [...many, ...few];
+
+    expect(computeNorthStarMetrics(all).execution.actualStartRate).toBeCloseTo(4 / 24);
+
+    const c = compareAroundDate(all, '2026-07-10');
+    expect(c.actualStartRate.before).toBeCloseTo(0);
+    expect(c.actualStartRate.after).toBeCloseTo(1);
+  });
+});
+
+describe('formatComparisonReport', () => {
+  it('前後の率と差分をpt表記で載せる', () => {
+    const sessions = [
+      makeSession({ date: '2026-07-01' }),
+      makeSession({ date: '2026-07-10', actualStart: 'x' }),
+    ];
+
+    const report = formatComparisonReport(compareAroundDate(sessions, '2026-07-10'));
+
+    expect(report).toContain('タイマー開始率  ★: 0% → 100%  (+100pt)');
+    expect(report).toContain('2026-07-10（この日から「後」）');
+    expect(report).toContain('n=1 の観察であり対照実験ではない');
   });
 });
 

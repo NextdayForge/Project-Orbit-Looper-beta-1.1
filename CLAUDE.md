@@ -45,7 +45,7 @@ DayType は 4 種のみ: `REST / LIGHT / NORMAL / PUSH`（SPRINT は未実装）
 | Worker型チェック | `cd workers/looper-gemini-proxy && npx tsc --noEmit`（要 `npm install`） |
 | Android プレビュービルド | `npm run build:android:preview` |
 
-現状のベースライン（2026-09-03 実測）: 型チェック0エラー / テスト**36スイート・223件**全て成功 / lint 0エラー・26警告（既存の軽微な `no-unused-vars` 等、未対応）。
+現状のベースライン（2026-09-07 実測）: 型チェック0エラー / テスト**36スイート・235件**全て成功 / lint 0エラー・26警告（既存の軽微な `no-unused-vars` 等、未対応）。
 
 ---
 
@@ -109,10 +109,13 @@ buildProposalContext()          ✅ 完成（proposalContext.ts）
 
 **実装方針:** 上記はすべて `intelligence/coach/`（CoachService / coachPrompts / coachResponseSchema / localCoach）と `intelligence/reflection/` に既存の手本がある。**新規発明せず既存パターンを踏襲すること。**
 
-既知の小課題（対応は任意 / Phase2）:
-- `candidatePoolBuilder.ts` の `remainingMinutes` は現状 `task.estimatedMinutes` そのまま（部分完了タスクの残り時間を反映していない）。DTO 名と実挙動に差がある。
-- `scoringEngine.ts` で今日締切は `deadline_today (40) + deadline_within_24h (25) = 65` と二重加点になる。意図的だが将来調整の余地。
-- Inbox の未配置タスクが候補プールに入らないケースがある（`resolveMorningReplanTaskIds` 由来）。
+既知の小課題（**このパイプラインを UI に繋ぐ前に必ず処理すること**。2026-09-07 に実コードで再確認）:
+- `candidatePoolBuilder.ts:88` の `remainingMinutes` は `task.estimatedMinutes` そのまま（部分完了タスクの残り時間を反映していない）。DTO 名と実挙動に差がある。
+- `scoringEngine.ts:53-59` で今日締切は `deadline_today (40)` と `deadline_within_24h (25)` が独立した if で両方付き 65 点になる。意図的だが、繋ぐ前に妥当性を一度決めること。
+
+> **現時点で `intelligence/taskProposal/` は UI からまったく到達できない**（自ディレクトリと `__tests__` 以外どこからも import されていない）。上の2件は実ユーザーに影響しないが、繋いだ瞬間に顕在化する。
+>
+> かつてここに記載していた「Inbox の未配置タスクが候補プールに入らない」は **2026-07-06 の修正で解決済み**のため削除した。`resolveMorningReplanTaskIds()` は `placable` を常に含む常時ユニオン方式になっており（`morningTaskSelector.ts` の docstring 参照）、`proposalContext.ts:198` がそれを経由している。
 
 ---
 

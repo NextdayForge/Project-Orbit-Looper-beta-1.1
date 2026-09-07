@@ -67,6 +67,38 @@ export interface RetentionMetrics {
   survivedTwoWeeks: boolean;
 }
 
+/**
+ * 集計対象期間の指定（両端を含む）。省略した側は無制限。
+ * 施策の前後を切り分けて比べるために使う。
+ */
+export interface MetricsPeriod {
+  /** YYYY-MM-DD。この日を含む */
+  from?: string;
+  /** YYYY-MM-DD。この日を含む */
+  to?: string;
+}
+
+/**
+ * 1日分の実行フィデリティ。
+ *
+ * **累積値だけでは施策の効果は測れない。** 施策前に100セッションを20%でこなしていた場合、
+ * 施策後に80%へ改善しても新しい20セッションでは累積は20%→30%にしか動かず、
+ * 4倍の改善が3割増しに見える。前後比較には日別の系列（＝折れ線の段差）を使うこと。
+ */
+export interface DailyMetrics {
+  date: string;
+  plannedSessionCount: number;
+  startedSessionCount: number;
+  /** その日のタイマー開始率（0..1）。分母0なら null */
+  actualStartRate: number | null;
+  completedSessionCount: number;
+  timedCompletedSessionCount: number;
+  timedCompletionRate: number | null;
+  /** timerUsed の outcome が1件でもあるか＝学習が成立した日 */
+  hasLearningSignal: boolean;
+  rescheduledSessionCount: number;
+}
+
 /** 北極星の判定材料一式。 */
 export interface NorthStarMetrics {
   /** 集計対象の期間（両端含む・活動ベース） */
@@ -76,4 +108,31 @@ export interface NorthStarMetrics {
   learning: LearningSignalMetrics;
   replan: ReplanMetrics;
   retention: RetentionMetrics;
+  /** セッションが1件以上ある日のみ・日付昇順 */
+  daily: DailyMetrics[];
+}
+
+/** 施策前後の1指標の変化。 */
+export interface RateDelta {
+  before: number | null;
+  after: number | null;
+  /** after - before。どちらかが null なら null */
+  delta: number | null;
+}
+
+/**
+ * 施策の前後比較。`splitDate` は施策を入れた日で、**その日を「後」に含む**。
+ *
+ * n=1（自分だけ）で得られるのは「効かなかった」の判定材料であって、
+ * 「効いた」の証明ではない。学習ループ自体が時間とともにプランの質を上げるため、
+ * 改善が動線由来か UserModel の成熟由来かはこの比較だけでは分離できない。
+ */
+export interface PeriodComparison {
+  splitDate: string;
+  before: NorthStarMetrics;
+  after: NorthStarMetrics;
+  actualStartRate: RateDelta;
+  timedCompletionRate: RateDelta;
+  learningDayRate: RateDelta;
+  replanDayRate: RateDelta;
 }
