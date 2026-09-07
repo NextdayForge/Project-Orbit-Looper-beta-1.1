@@ -16,7 +16,7 @@ function average(values: number[]): number {
 }
 
 function averageByCategory(
-  samples: Array<{ category: string; ratio: number }>
+  samples: { category: string; ratio: number }[]
 ): Record<string, number> {
   const buckets = new Map<string, number[]>();
 

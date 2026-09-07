@@ -25,7 +25,7 @@ import {
 
 
 
-function tasksForPlacement(tasks: Task[]): Array<Record<string, unknown>> {
+function tasksForPlacement(tasks: Task[]): Record<string, unknown>[] {
 
   return tasks
 
@@ -53,7 +53,7 @@ function tasksForPlacement(tasks: Task[]): Array<Record<string, unknown>> {
 
 
 
-function fixedBlocksForDate(blocks: CalendarBlock[], date: string): Array<Record<string, unknown>> {
+function fixedBlocksForDate(blocks: CalendarBlock[], date: string): Record<string, unknown>[] {
 
   return blocks
 
@@ -77,7 +77,7 @@ function fixedBlocksForDate(blocks: CalendarBlock[], date: string): Array<Record
 
 
 
-function anchoredSessionsForPrompt(sessions: Session[] | undefined): Array<Record<string, unknown>> {
+function anchoredSessionsForPrompt(sessions: Session[] | undefined): Record<string, unknown>[] {
 
   return (sessions ?? [])
 

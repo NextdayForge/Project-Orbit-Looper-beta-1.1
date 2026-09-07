@@ -1,8 +1,7 @@
 import { CalendarEditorGateway } from '../../presentation/calendar/CalendarEditorAdapter';
-import { PlannerGateway, ApplyDayPlanResult } from '../../presentation/calendar/CalendarPlannerAdapter';
+import { PlannerGateway, ApplyDayPlanResult , runAiDayPlan } from '../../presentation/calendar/CalendarPlannerAdapter';
 import { buildRolloverNotice } from '../../presentation/calendar/placementRollover';
 import { resolveAiTaskInputs } from '../../presentation/calendar/resolveAiTasks';
-import { runAiDayPlan } from '../../presentation/calendar/CalendarPlannerAdapter';
 import { sessionRepository, taskRepository } from '../../repositories';
 import { AiTaskInput } from '../../types/schedule';
 import { toDateKey } from '../../utils/time';

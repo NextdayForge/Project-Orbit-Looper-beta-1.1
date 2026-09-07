@@ -133,11 +133,11 @@ export async function resolveAiTaskInputs(
   const userModel = await userModelRepository.get();
 
   const knownTasks = [...existingTasks];
-  const pendingInputs: Array<{
+  const pendingInputs: {
     title: string;
     priority: typeof inputs[0]['priority'];
     estimatedMinutes?: number;
-  }> = [];
+  }[] = [];
 
   for (const input of inputs) {
     const normalizedTitle = normalizeTaskTitle(input.title);

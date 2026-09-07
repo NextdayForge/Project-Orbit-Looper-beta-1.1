@@ -80,9 +80,23 @@ Phase 2 の検証手順をユーザーに説明する過程で、**今の計測�
 
 ### 次回への申し送り
 1. **Phase 2（実行フィデリティのUI動線強化）に進んでよい。** 未検証の修正はゼロになり、計測も実機で機能することが確認済み。**まず1週間ベースラインを取り、上記の内訳（どちらの失敗モードか）を見てから施策を選ぶこと**
-2. lint 26警告のうち14件は `npx eslint "src/**/*.{ts,tsx}" --fix` で自動的に消える（未実施）
+2. ~~lint 26警告のうち14件は `npx eslint "src/**/*.{ts,tsx}" --fix` で自動的に消える（未実施）~~ → 同日中にClaude Codeが実施済み（下記）
 3. 未解決のまま: Cloudflare Worker プロキシの 401（ローカル `.env` / EAS / Worker の3者で値が乖離。実機は動くので実害なし）、`ayosh` 機の未pushコミットの有無、Vercel 二重プロジェクトの一本化
 4. リリース前チェック: `BETA_FORCE_PRO_PLAN` を `false` に戻す
+
+### 続報（Claude Code側）: push・引き継ぎ規約の書き換え・lint自動修正
+
+上記のclaude.ai（Chat）側の作業を受けて、このマシン上のClaude Codeで以下を実施した。今回はSESSION_LOGの「次回への申し送り」ではなく、**Chatが生成した貼り付け用プロンプト**を受け取って着手した（後述の規約変更どおりの初回運用）。
+
+1. **push**: 未push だった2コミット（`f28dd77` 計測の期間指定・日別系列・前後比較、`f40f10c` 役割分担の明記）を `origin/main` へ反映（`dbe17d9..f40f10c`）。
+2. **CLAUDE.mdの「引き継ぎの規約」を書き換え。** 変更前は「Chatが SESSION_LOG の『次回への申し送り』に書き、Codeがそれを読む」という規約だったが、実際の運用（今回のように貼り付け用プロンプトを直接渡す形）と乖離していたため、**「Chat→Codeはその都度生成するプロンプト、Code→Chat（および次回のCode自身）はSESSION_LOG」と往路・復路で経路を分ける形に修正**した。claude.ai側のプロジェクトドキュメントはCodeから読めないため「プロンプトは単体で完結している前提」という注記はそのまま残した。
+3. **lint自動修正**: `npx eslint "src/**/*.{ts,tsx}" --fix` を実行。差分は `Array<T>` → `T[]`（`array-type`）と import の重複統合（`no-duplicates`）のみで、9ファイルにまたがるが**ロジックには一切触れていない**ことを `git diff` で確認済み。26警告 → **11警告**に減少（`no-unused-vars` 9件・`no-empty-object-type` 1件・`CalendarView.tsx:269` の `exhaustive-deps` 誤検知1件が残存。いずれも指示どおり今回は手を付けていない）。
+4. **検証**: `npx tsc --noEmit` 0エラー / `npm test` 36スイート・235件全成功（変化なし） / `npm run lint` 0エラー・**11警告**。CLAUDE.mdのベースライン注記もこの数字に更新した。
+5. 上記2〜4をまとめてコミット・push した。
+
+**やらなかったこと（指示通り）**: Phase 2の実装には着手していない。`intelligence/taskProposal/` には触れていない。`no-unused-vars` 9件の手動修正、`CalendarView.tsx:269` の「修正」は行っていない（誤検知のため）。
+
+**完了条件はすべて満たした**: tsc exit 0 / test 36スイート235件 / lint exit 0（0エラー・11警告）、origin/main と同期済み。
 
 ---
 

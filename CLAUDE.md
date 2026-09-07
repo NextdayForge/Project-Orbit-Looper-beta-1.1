@@ -45,7 +45,7 @@ DayType は 4 種のみ: `REST / LIGHT / NORMAL / PUSH`（SPRINT は未実装）
 | Worker型チェック | `cd workers/looper-gemini-proxy && npx tsc --noEmit`（要 `npm install`） |
 | Android プレビュービルド | `npm run build:android:preview` |
 
-現状のベースライン（2026-09-07 実測）: 型チェック0エラー / テスト**36スイート・235件**全て成功 / lint 0エラー・26警告（既存の軽微な `no-unused-vars` 等、未対応）。
+現状のベースライン（2026-09-07 実測）: 型チェック0エラー / テスト**36スイート・235件**全て成功 / lint 0エラー・**11警告**（`no-unused-vars` 9件・`no-empty-object-type` 1件・`CalendarView.tsx` の `exhaustive-deps` 誤検知1件、いずれも未対応。`array-type`/`no-duplicates` 由来の警告はこの日の自動修正で解消済み）。
 
 ---
 
@@ -133,13 +133,13 @@ buildProposalContext()          ✅ 完成（proposalContext.ts）
 
 ### 引き継ぎの規約
 
-**行動の単一の情報源は [`docs/SESSION_LOG.md`](docs/SESSION_LOG.md) の「次回への申し送り」。**
+**Chat → Code の受け渡しは、SESSION_LOG 経由ではなく貼り付け用プロンプト。**
 
-- Chat は調査・判断が終わったら、その日のエントリに経緯を書き、**「次回への申し送り」に実行可能な粒度で**残す（コマンド・対象ファイル・期待結果まで）。Code はセッション開始時にこれを読んで着手する
-- claude.ai 側のプロジェクトドキュメント（棚卸し・ロードマップ・バグ一覧）には**判断の理由**を置く。**Code からは読めない**ので、実行に必要な情報は必ず SESSION_LOG 側にも書くこと
-- Code は実装が終わったら同じ SESSION_LOG に結果を追記する。Chat は次に触るときそれを読んで現状を把握する
+- Chat は調査・判断が終わったら、それをそのまま Code に貼り付けて実行できる**プロンプトを生成して渡す**（コマンド・対象ファイル・順序・期待結果・やらないことまで書き切る）。SESSION_LOG の「次回への申し送り」に書くのではなく、プロンプトそのものが引き継ぎの実体になる
+- claude.ai 側のプロジェクトドキュメント（棚卸し・ロードマップ・バグ一覧）には**判断の理由**を置く。**Code からは読めない**ので、プロンプトは単体で完結している前提で書く（「詳細はドキュメント参照」は不可）
+- **Code は実装が終わったら、結果を [`docs/SESSION_LOG.md`](docs/SESSION_LOG.md) に追記する責任を持つ。** 受け取ったプロンプトの内容・実施結果・差分があれば理由を、日付付きエントリとして書く。Chat は次に棚卸しするときこれを読んで現状を把握する
 
-この往復が成立していれば、どちらの面から入っても現在地を見失わない。
+つまり **Chat→Code は都度生成するプロンプト、Code→Chat（および次回の Code 自身）は SESSION_LOG** と、往路と復路で経路が異なる。SESSION_LOG は常に「Code が実際に何をしたか」の記録として一貫させる。
 
 ---
 

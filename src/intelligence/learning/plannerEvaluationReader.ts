@@ -17,7 +17,7 @@ function parseSampleCounts(value: unknown): PlannerEvaluationSampleCounts | null
     return null;
   }
 
-  const fields: Array<keyof PlannerEvaluationSampleCounts> = [
+  const fields: (keyof PlannerEvaluationSampleCounts)[] = [
     'plannedSessions',
     'placementSuccessful',
     'sessionsWithOutcome',

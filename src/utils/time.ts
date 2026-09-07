@@ -1,3 +1,5 @@
+import type { CalendarDisplayEvent } from '../presentation/calendar/CalendarDisplayEvent';
+
 export function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
@@ -98,8 +100,6 @@ export function durationLabel(start: number, end: number): string {
   const m = mins % 60;
   return m === 0 ? `${h}時間` : `${h}時間${m}分`;
 }
-
-import type { CalendarDisplayEvent } from '../presentation/calendar/CalendarDisplayEvent';
 
 export interface LayoutEvent {
   event: CalendarDisplayEvent;

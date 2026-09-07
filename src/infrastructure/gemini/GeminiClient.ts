@@ -20,8 +20,8 @@ function isRetryableStatus(status: number): boolean {
 }
 
 interface GeminiRequestBody {
-  systemInstruction: { parts: Array<{ text: string }> };
-  contents: Array<{ role: string; parts: Array<{ text: string }> }>;
+  systemInstruction: { parts: { text: string }[] };
+  contents: { role: string; parts: { text: string }[] }[];
   generationConfig: Record<string, unknown>;
 }
 
@@ -108,7 +108,7 @@ export class GeminiClient {
         }
 
         const data = (await response.json()) as {
-          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+          candidates?: { content?: { parts?: { text?: string }[] } }[];
         };
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         return { text: text || null, retryCount: attempt };

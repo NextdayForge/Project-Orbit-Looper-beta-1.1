@@ -37,12 +37,12 @@ export const COACH_CONSULT_RESPONSE_SCHEMA: Record<string, unknown> = {
 export interface CoachConsultStructuredDto {
   reply: string;
   intent: 'emotional' | 'advice' | 'register_tasks' | 'plan_question' | 'general';
-  proposedTasks: Array<{
+  proposedTasks: {
     title: string;
     priority?: number;
     estimatedMinutes?: number;
     rationale?: string;
-  }>;
+  }[];
   offerSchedule: boolean;
   autoSchedule: boolean;
 }
