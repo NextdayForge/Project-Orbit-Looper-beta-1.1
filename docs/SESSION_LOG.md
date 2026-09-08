@@ -5,6 +5,42 @@
 
 ---
 
+## 2026-09-08
+
+### 「22時に寝る予定を立てて」が21:35〜22:05にずれる不具合を修正
+
+claude.ai（Chat）側の調査済みプロンプトを受け取って着手。原因は機能不足ではなく配線漏れだった: 固定時刻を表現する器（`CalendarBlock(type:'fixed', locked:true)`）も `CalendarEditorGateway.createCalendarBlock()` も既に存在していたが、`ApplyCoachScheduleDeps.editorGateway` が `Pick<..., 'createTask'|'updateTask'>` に絞られていたため、コーチは Task しか作れなかった（Task には時刻を固定する手段が無い＝設計原則1の帰結）。
+
+**変更点:**
+
+- `intelligence/coach/types.ts`: `CoachProposedFixedEvent` を追加。`CoachScheduleAction` を `CoachScheduleTasksAction | CoachScheduleFixedEventsAction` のunionに変更。`ApplyCoachScheduleDeps.editorGateway` の Pick に `'createCalendarBlock'` を追加
+- `intelligence/coach/coachResponseSchema.ts`: intentに `register_fixed_event` を追加、`proposedFixedEvents`（title/startMinutes/endMinutes）を追加。`proposedTasks` には時刻フィールドを足していない（Task/CalendarBlockを混ぜると設計原則1が崩れるため）
+- `intelligence/coach/coachPrompts.ts`: 時刻が明示された依頼は `register_fixed_event` を優先し、開始時刻は必ずそのまま反映、終了時刻未指定時は内容から妥当な長さを判断してよいが1440分を超えないよう指示
+- `intelligence/coach/coachIntent.ts`: **ローカルフォールバックを新規実装**（`localCoach.ts`自体は無改修——`localConsult`が`detectLocalConsultIntent`を先頭で呼ぶ既存の配線に相乗りする形で自然に優先された）
+  - `parseTimeExpression()`: 純粋関数。対応形式は `22:00`/`9:05`（HH:MM）、`22時`/`22時半`/`22時30分`、`午前7時`/`午後10時`/`午後10時半`/`午後10時30分`、`10pm`/`10PM`/`10:30pm`。範囲外の時刻（`25時`等）は`null`
+  - `extractFixedEvents()`: `FIXED_EVENT_HINTS`（予定/スケジュール/登録/追加/組み込/入れて/立てて/作って）でゲートしたうえで時刻を抽出し、時刻トークン＋助詞＋末尾の依頼フレーズを反復除去してタイトルを取り出す。終了時刻未指定時は一律60分（就寝専用の長い既定値は検討したが、22時台の就寝はどのみち日またぎでクランプされ意味を成さないため不採用。詳細はコード内コメント）
+  - 開始・終了とも**1440分（24:00）でクランプ**し日またぎを作らない（「やらないこと」の指示通り）
+- `intelligence/coach/coachApply.ts`: `applyCoachScheduleAction` を `action.kind` で分岐。`schedule_fixed_events` は各イベントを `createCalendarBlock({ type:'fixed', locked:true, source:'ai' })` で作成
+- `intelligence/planner/CapacityPlanner.ts`: ハードコードされていた `SLEEP_MINUTES = 8*60` を削除し、`settings.wakeMinutes`/`settings.sleepMinutes` から深夜またぎを考慮して導出（`(wake - sleep + 1440) % 1440`）するよう変更。`CapacityPlanOptions` に `wakeMinutes?`/`sleepMinutes?` を追加、省略時は `DEFAULT_SETTINGS`（7:00起床/23:00就寝＝8h）にフォールバックし**既存呼び出し元（`taskProposal/proposalContext.ts`、UIから到達不能につき今回は触っていない）の挙動を変えない**。実際に容量計算へ反映されていなかった `useDayPlan.ts` の `ensureDayPlanSnapshot()` には settings を渡すよう修正（もう一つの呼び出し元 `generateDayPlan()` は `availableMinutesOverride` を使っておりこの不具合の影響を受けていなかった）
+- `App.tsx`: **変更不要だった。** `coachScheduleDeps.editorGateway` には既に完全な `CalendarEditorGateway`（`createCalendarBlock` 込み）が渡っており、`ApplyCoachScheduleDeps` 側の Pick を広げるだけで構造的に配線が完成した
+
+**テスト（新規）:**
+- `coachIntent.test.ts`: `parseTimeExpression` の表形式テスト（上記全形式）、`extractFixedEvents` のタイトル抽出・日またぎクランプ・誤検知防止（時刻だけで依頼語が無い文は発火しない）、`detectLocalConsultIntent` が `register_tasks` ではなく `register_fixed_event` を返すことの確認
+- `coachApply.test.ts`（新規ファイル）: `schedule_fixed_events` が正しい payload（title/date/startMinutes/endMinutes/type:'fixed'/locked:true/source:'ai'）で `createCalendarBlock` を呼ぶこと、複数イベントの順序、`events:[]` で `skipped_empty` になること
+- `capacityPlanner.test.ts`（新規ファイル）: wake/sleep省略時に旧来の8h相当（960分）を維持すること、設定を変えると容量が実際に変わること（9h睡眠→900分、7h睡眠→1020分）、固定ブロックとの併用、`availableMinutesOverride` が引き続き優先されること
+
+**実機能確認（Web版、Gemini経由）:** `npm run web` で起動し、AIコーチに「22時に寝る予定を立てて」と入力 → 「22時に寝る予定を承知いたしました。今日の固定予定に組み込みますね。」→「今日の予定に固定で入れました。対象: 寝る」と応答。カレンダーの当日タイムラインに **22:00〜24:00・「寝る」・fixedラベル付き固定予定** として実際に反映されることを確認した（Gemini自身が終了時刻を24:00に判断し、こちらのクランプと合致）。
+
+**検証:** `npx tsc --noEmit` 0エラー / `npm test` **38スイート・271件**全成功（+2スイート・+36件）/ `npm run lint` 0エラー・**11警告**（新規警告なし、既存の残存分のみ）。
+
+### 次回への申し送り
+1. 睡眠は「一日の境界」として `settings.sleepMinutes`/`wakeMinutes` が既に担っているため、今回の固定ブロックは日をまたがない範囲でのマーカーに留めた。将来「23時に寝て7時に起きる」のような**日またぎ睡眠ブロック**が本当に必要になった場合は、`plannerConstants.ts`（`VALID_MINUTE_MAX`）・`utils/time.ts`（`isValidMinutes`）・`PlacementResultValidator`・Placement・空きスロット計算・カレンダー描画・`DailyFeatureExtractor`・計測の日別系列まで前提を洗い直す必要があり、影響範囲が大きいので別途スコープを切ること
+2. `intelligence/taskProposal/proposalContext.ts` の `planCapacity()` 呼び出しは今回意図的に未着手（UIから到達不能）。`taskProposal` をUIに繋ぐ際は、`wakeMinutes`/`sleepMinutes` をそこにも渡すかどうか判断すること
+3. lint残り11警告（`no-unused-vars` 9件・`no-empty-object-type` 1件・`CalendarView.tsx` の `exhaustive-deps` 誤検知1件）は今回も対象外のまま
+4. リリース前チェック: `BETA_FORCE_PRO_PLAN` を `false` に戻す（未着手のまま持ち越し）
+
+---
+
 ## 2026-09-07
 
 ### 報告済み不具合の棚卸しと、未検証だった2件の実機確認

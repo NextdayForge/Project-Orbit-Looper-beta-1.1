@@ -14,12 +14,28 @@ export interface CoachProposedTask {
   note?: string;
 }
 
-export interface CoachScheduleAction {
+/** A request for a fixed, user-anchored time slot (CalendarBlock), not a Task. */
+export interface CoachProposedFixedEvent {
+  title: string;
+  startMinutes: number;
+  endMinutes: number;
+}
+
+export interface CoachScheduleTasksAction {
   kind: 'schedule_tasks';
   tasks: CoachProposedTask[];
   autoApply?: boolean;
   summary?: string;
 }
+
+export interface CoachScheduleFixedEventsAction {
+  kind: 'schedule_fixed_events';
+  events: CoachProposedFixedEvent[];
+  autoApply?: boolean;
+  summary?: string;
+}
+
+export type CoachScheduleAction = CoachScheduleTasksAction | CoachScheduleFixedEventsAction;
 
 export interface CoachReply {
   text: string;
@@ -46,6 +62,6 @@ export interface CoachConsultInput extends CoachContextInput {
 export interface ApplyCoachScheduleDeps {
   date?: Date;
   defaultDurationMinutes: number;
-  editorGateway: Pick<CalendarEditorGateway, 'createTask' | 'updateTask'>;
+  editorGateway: Pick<CalendarEditorGateway, 'createTask' | 'updateTask' | 'createCalendarBlock'>;
   plannerGateway: PlannerGateway;
 }

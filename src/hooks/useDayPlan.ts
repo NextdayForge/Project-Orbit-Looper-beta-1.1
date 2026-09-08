@@ -343,12 +343,13 @@ export function useDayPlan() {
   }, []);
 
   const ensureDayPlanSnapshot = useCallback(async (date: string): Promise<DayPlan> => {
-    const [tasks, sessions, calendarBlocks, routines, userModel] = await Promise.all([
+    const [tasks, sessions, calendarBlocks, routines, userModel, settings] = await Promise.all([
       taskRepository.getAll(),
       sessionRepository.getAll(),
       calendarBlockRepository.getAll(),
       routineRepository.getAll(),
       userModelRepository.get(),
+      settingsRepository.get(),
     ]);
 
     const daySessions = sessions.filter((session) => session.date === date);
@@ -357,7 +358,10 @@ export function useDayPlan() {
     const avoidanceBlocks = [...dayBlocks, ...expandRoutinesForDate(routines, date)];
     const context = toPlannerContext(userModel);
     const dayTypeResult = classify(context, tasks, avoidanceBlocks, date);
-    const capacity = planCapacity(context, dayTypeResult.dayType, tasks, avoidanceBlocks);
+    const capacity = planCapacity(context, dayTypeResult.dayType, tasks, avoidanceBlocks, {
+      wakeMinutes: settings.wakeMinutes,
+      sleepMinutes: settings.sleepMinutes,
+    });
 
     const snapshot: DayPlan = {
       date,

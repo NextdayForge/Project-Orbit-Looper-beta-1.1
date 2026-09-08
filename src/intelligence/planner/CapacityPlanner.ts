@@ -1,11 +1,11 @@
 import { CalendarBlock } from '../../types/calendarBlock';
 import { CapacityPlan, CapacityPlanOptions } from '../../types/capacityPlan';
+import { DEFAULT_SETTINGS } from '../../types/schedule';
 import { Task } from '../../types/task';
 import { PlannerContext } from '../../types/userModel';
 import { DayType } from './types';
 
 const MINUTES_PER_DAY = 24 * 60;
-const SLEEP_MINUTES = 8 * 60;
 const MIN_BUFFER_MINUTES = 30;
 const MAX_BUFFER_MINUTES = 180;
 const BREAK_RATIO = 0.2;
@@ -28,6 +28,11 @@ function sumFixedBlockMinutes(blocks: CalendarBlock[]): number {
   return blocks
     .filter((block) => block.type === 'fixed')
     .reduce((sum, block) => sum + (block.endMinutes - block.startMinutes), 0);
+}
+
+/** Overnight sleep duration derived from the user's wake/sleep clock times (handles the midnight wrap). */
+function resolveSleepDurationMinutes(wakeMinutes: number, sleepMinutes: number): number {
+  return ((wakeMinutes - sleepMinutes + MINUTES_PER_DAY) % MINUTES_PER_DAY);
 }
 
 function resolveBufferMinutes(availableMinutes: number, bufferNeed: number): {
@@ -86,7 +91,11 @@ export function planCapacity(
     return buildCapacityPlan(context, dayType, Math.max(0, options.availableMinutesOverride));
   }
 
+  const wakeMinutes = options?.wakeMinutes ?? DEFAULT_SETTINGS.wakeMinutes;
+  const sleepMinutes = options?.sleepMinutes ?? DEFAULT_SETTINGS.sleepMinutes;
+  const sleepDurationMinutes = resolveSleepDurationMinutes(wakeMinutes, sleepMinutes);
+
   const fixedMinutes = sumFixedBlockMinutes(blocks);
-  const availableMinutes = Math.max(0, MINUTES_PER_DAY - fixedMinutes - SLEEP_MINUTES);
+  const availableMinutes = Math.max(0, MINUTES_PER_DAY - fixedMinutes - sleepDurationMinutes);
   return buildCapacityPlan(context, dayType, availableMinutes);
 }

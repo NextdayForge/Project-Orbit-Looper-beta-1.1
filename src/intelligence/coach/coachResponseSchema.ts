@@ -7,7 +7,7 @@ export const COACH_CONSULT_RESPONSE_SCHEMA: Record<string, unknown> = {
     },
     intent: {
       type: 'STRING',
-      enum: ['emotional', 'advice', 'register_tasks', 'plan_question', 'general'],
+      enum: ['emotional', 'advice', 'register_tasks', 'register_fixed_event', 'plan_question', 'general'],
     },
     proposedTasks: {
       type: 'ARRAY',
@@ -20,6 +20,19 @@ export const COACH_CONSULT_RESPONSE_SCHEMA: Record<string, unknown> = {
           rationale: { type: 'STRING' },
         },
         required: ['title'],
+      },
+    },
+    proposedFixedEvents: {
+      type: 'ARRAY',
+      description: '時刻が明示された固定予定（起床・就寝・通院など）。Task化しない。',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          title: { type: 'STRING' },
+          startMinutes: { type: 'INTEGER', description: '0時からの経過分（0〜1440）' },
+          endMinutes: { type: 'INTEGER', description: '0時からの経過分（0〜1440）' },
+        },
+        required: ['title', 'startMinutes', 'endMinutes'],
       },
     },
     offerSchedule: {
@@ -36,12 +49,17 @@ export const COACH_CONSULT_RESPONSE_SCHEMA: Record<string, unknown> = {
 
 export interface CoachConsultStructuredDto {
   reply: string;
-  intent: 'emotional' | 'advice' | 'register_tasks' | 'plan_question' | 'general';
+  intent: 'emotional' | 'advice' | 'register_tasks' | 'register_fixed_event' | 'plan_question' | 'general';
   proposedTasks: {
     title: string;
     priority?: number;
     estimatedMinutes?: number;
     rationale?: string;
+  }[];
+  proposedFixedEvents?: {
+    title: string;
+    startMinutes: number;
+    endMinutes: number;
   }[];
   offerSchedule: boolean;
   autoSchedule: boolean;

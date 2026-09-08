@@ -5,7 +5,7 @@ import { resolveAiTaskInputs } from '../../presentation/calendar/resolveAiTasks'
 import { sessionRepository, taskRepository } from '../../repositories';
 import { AiTaskInput } from '../../types/schedule';
 import { toDateKey } from '../../utils/time';
-import { CoachScheduleAction } from './types';
+import { CoachScheduleAction, CoachScheduleFixedEventsAction, CoachScheduleTasksAction } from './types';
 
 export interface ApplyCoachScheduleResult {
   result: ApplyDayPlanResult;
@@ -13,14 +13,61 @@ export interface ApplyCoachScheduleResult {
   taskTitles: string[];
 }
 
+export interface ApplyCoachScheduleOptions {
+  date?: Date;
+  defaultDurationMinutes: number;
+  editorGateway: Pick<CalendarEditorGateway, 'createTask' | 'updateTask' | 'createCalendarBlock'>;
+  plannerGateway: PlannerGateway;
+}
+
 export async function applyCoachScheduleAction(
   action: CoachScheduleAction,
-  options: {
-    date?: Date;
-    defaultDurationMinutes: number;
-    editorGateway: Pick<CalendarEditorGateway, 'createTask' | 'updateTask'>;
-    plannerGateway: PlannerGateway;
+  options: ApplyCoachScheduleOptions
+): Promise<ApplyCoachScheduleResult> {
+  if (action.kind === 'schedule_fixed_events') {
+    return applyFixedEventsAction(action, options);
   }
+  return applyTasksAction(action, options);
+}
+
+async function applyFixedEventsAction(
+  action: CoachScheduleFixedEventsAction,
+  options: ApplyCoachScheduleOptions
+): Promise<ApplyCoachScheduleResult> {
+  const targetDate = options.date ?? new Date();
+  const dateKey = toDateKey(targetDate);
+  const eventTitles = action.events.map((event) => event.title);
+
+  if (action.events.length === 0) {
+    return {
+      result: 'skipped_empty',
+      message: '固定予定を作成できませんでした。時刻ともう一度教えてください。',
+      taskTitles: eventTitles,
+    };
+  }
+
+  for (const event of action.events) {
+    await options.editorGateway.createCalendarBlock({
+      title: event.title,
+      date: dateKey,
+      startMinutes: event.startMinutes,
+      endMinutes: event.endMinutes,
+      type: 'fixed',
+      locked: true,
+      source: 'ai',
+    });
+  }
+
+  return {
+    result: 'applied',
+    message: `今日の予定に固定で入れました。対象: ${eventTitles.join('、')}`,
+    taskTitles: eventTitles,
+  };
+}
+
+async function applyTasksAction(
+  action: CoachScheduleTasksAction,
+  options: ApplyCoachScheduleOptions
 ): Promise<ApplyCoachScheduleResult> {
   const targetDate = options.date ?? new Date();
   const dateKey = toDateKey(targetDate);

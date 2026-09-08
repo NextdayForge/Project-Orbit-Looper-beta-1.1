@@ -30,6 +30,7 @@ function parseConsultDto(raw: string | null): CoachConsultStructuredDto | null {
       reply: parsed.reply,
       intent: parsed.intent ?? 'general',
       proposedTasks: Array.isArray(parsed.proposedTasks) ? parsed.proposedTasks : [],
+      proposedFixedEvents: Array.isArray(parsed.proposedFixedEvents) ? parsed.proposedFixedEvents : [],
       offerSchedule: Boolean(parsed.offerSchedule),
       autoSchedule: Boolean(parsed.autoSchedule),
     };
