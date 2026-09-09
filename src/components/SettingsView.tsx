@@ -461,7 +461,8 @@ export function SettingsView({
             </View>
             {apiKeyMessage ? <Text style={styles.dataMessage}>{apiKeyMessage}</Text> : null}
             <Text style={styles.betaNote}>
-              キーは以下のリンクから無料取得できます。この端末（ブラウザ）内にのみ保存され、外部には送信しません。
+              キーは以下のリンクから無料取得できます。このブラウザに保存され、外部には送信しません。
+              エクスポート（バックアップ）ファイルにも含まれないため、他の端末やブラウザには引き継がれません。
             </Text>
             {/*
               A real <a> element (via Text's web-only href/hrefAttrs, supported

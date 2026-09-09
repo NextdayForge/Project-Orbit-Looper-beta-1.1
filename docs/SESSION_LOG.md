@@ -30,6 +30,24 @@ claude.ai（Chat）側で原因特定済みのプロンプトを受け取って�
 2. ネイティブ（Android/iOS）実機で、実際に複数行ペーストがJS側の値に改行付きで渡るかどうかは未確認。次にAndroid実機/エミュレータで確認する際に合わせて見ておくとよい
 3. lint残り11警告・`taskProposal/` 未着手・`BETA_FORCE_PRO_PLAN` は引き続き持ち越し
 
+### 続報: Web版のGemini APIキーが保存されない不具合を修正（ユーザー指示: 6番）
+
+ユーザーから直接の指示（Chat経由ではなく）: Web版のBYOK欄で保存したGemini APIキーが `LooperDataStore.normalize()` により毎回消されている問題を、**Web版では保存する方針に変更**してほしいという依頼。
+
+**原因:** `normalize()` は `load()`（＝アプリ起動・ページリロードのたびに呼ばれる）の中で毎回呼ばれ、`settings.geminiApiKey` を無条件に `delete` していた（コメント「Legacy BYOK — never persist user-provided Gemini keys.」）。そのため `SettingsView` の保存ボタン自体は正しく動いていたが、**次にページを開き直した瞬間にメモリ上から消え**、その後何か別の変更を1つでも保存すると永続化データからも消える、という壊れ方をしていた。
+
+**変更点:**
+- `storage/LooperDataStore.ts`: `normalize()` 内の `geminiApiKey` 削除ブロックを削除。合わせて未使用になった型注釈の `geminiApiKey?: string` フィールドも削除
+  - ネイティブ側は影響を受けない: `resolveGeminiConfig.ts` の `resolveGeminiApiKey()` はネイティブ経路で `settings.geminiApiKey` を一切参照しない（プロキシ or `.env` の直接キーのみ）ため、消さずに残しても無害。プラットフォーム分岐を書かずに済んだ
+- `storage/looperBackupCore.ts`: **変更なし。** `sanitizeSettingsForExport()` が既にエクスポート時に `geminiApiKey` を除去しており、指示の「バックアップには含めない」は元から満たされていた（`looperBackup.test.ts` で既にカバー済み）
+- `components/SettingsView.tsx`: BYOK欄の注記を「このブラウザに保存され、外部には送信しません。エクスポート（バックアップ）ファイルにも含まれないため、他の端末やブラウザには引き継がれません。」に変更（保存場所と、バックアップに乗らないことの両方を明記）
+
+**テスト（新規ファイル `looperDataStore.test.ts`）:** `AsyncStorageAdapter` をモックし、`IStorageAdapter` を実装した Map ベースの `FakeAdapter` を注入して検証。①`mutate`→`flush`→**別インスタンス**（＝リロードの再現）で `load()` してもキーが残ること、②リロード後にキーと無関係な変更を保存してもキーが消えないこと（＝「保存のたびに削除」の再発防止）の2点。
+
+**実機能確認（Web版）:** 設定画面でテスト用キーを保存 →「現在: AIza••••6789（有効）」表示 → ページを実際にリロード → 設定画面を開き直しても同じ表示のまま残ることを確認。
+
+**検証:** `npx tsc --noEmit` 0エラー / `npm test` **39スイート・295件**全成功（+2件）/ `npm run lint` 0エラー・**11警告**（変化なし）。
+
 ---
 
 ## 2026-09-08

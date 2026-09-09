@@ -127,16 +127,10 @@ export class LooperDataStore {
     // Legacy: dayStartMinutes was replaced by wakeMinutes (v3.1).
     const legacy = partial.settings as (Partial<AppSettings> & {
       dayStartMinutes?: number;
-      geminiApiKey?: string;
       orbitPlan?: LooperPlan;
     }) | undefined;
     if (legacy && typeof legacy.dayStartMinutes === 'number' && legacy.wakeMinutes === undefined) {
       settings.wakeMinutes = legacy.dayStartMinutes;
-    }
-
-    // Legacy BYOK — never persist user-provided Gemini keys.
-    if ('geminiApiKey' in settings) {
-      delete (settings as { geminiApiKey?: string }).geminiApiKey;
     }
 
     // Pre-rebrand: orbitPlan → looperPlan
