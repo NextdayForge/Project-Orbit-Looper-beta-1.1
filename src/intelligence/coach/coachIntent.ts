@@ -99,10 +99,29 @@ export function extractRegisterTasks(message: string): CoachProposedTask[] {
   return uniqueTasks(tasks);
 }
 
+const FULLWIDTH_DIGIT_OFFSET = '０'.charCodeAt(0) - '0'.charCodeAt(0);
+
+/**
+ * Normalizes full-width characters that show up when a schedule is pasted from a
+ * Japanese IME or spreadsheet, so the half-width TIME_PATTERNS below can see them:
+ * full-width digits ０-９, full-width colon "：", the various dashes used as a
+ * range separator ("～" "〜" "ー", plus the already-half-width "-" for symmetry),
+ * and full-width space "　". Idempotent — safe to call more than once.
+ */
+export function normalizeTimeText(text: string): string {
+  return text
+    .replace(/[０-９]/g, (digit) => String.fromCharCode(digit.charCodeAt(0) - FULLWIDTH_DIGIT_OFFSET))
+    .replace(/：/g, ':')
+    .replace(/[～〜ー]/g, '-')
+    .replace(/　/g, ' ');
+}
+
 export interface ParsedTimeExpression {
-  /** Minutes since midnight (0–1439). */
+  /** Minutes since midnight (0–1439) for the start of the expression. */
   minutes: number;
-  /** The substring that was matched, so callers can strip it from the title. */
+  /** Present when the text expressed a range ("8:30〜9:00"): minutes since midnight for the end. */
+  endMinutes?: number;
+  /** The full substring that was matched — the whole range when one was found, otherwise just the start time. */
   matchedText: string;
 }
 
@@ -166,19 +185,75 @@ const TIME_PATTERNS: { regex: RegExp; toMinutes: (m: RegExpMatchArray) => number
   },
 ];
 
-/** Pure parser for Japanese/English clock-time expressions. No side effects, no i18n framework. */
-export function parseTimeExpression(text: string): ParsedTimeExpression | null {
-  for (const { regex, toMinutes } of TIME_PATTERNS) {
+/**
+ * Scans ALL patterns and keeps the one starting earliest in the string — not just the
+ * first pattern (in specificity order) that matches anywhere. Without this, "9時〜12時半"
+ * would return "12時半" as the start: the plain "N時" pattern (which would correctly match
+ * "9時" at index 0) sits after "N時半" in TIME_PATTERNS, and "N時半" only matches later
+ * ("12時半") but still gets tried — and returned — before "N時" ever gets a chance.
+ * Ties (same start index, e.g. "22時半" matches both "N時半" and the plain "N時" prefix of
+ * it) go to whichever pattern is listed first, preserving the specific-before-generic order.
+ */
+function matchSingleTime(text: string): { minutes: number; matchedText: string } | null {
+  let best: { index: number; priority: number; minutes: number; matchedText: string } | null = null;
+
+  // A plain for-loop, not .forEach(): TS's control-flow narrowing for a `let` reassigned
+  // inside a callback doesn't carry back out to the enclosing scope, which otherwise makes
+  // `best` look permanently null (and the object branch below unreachable) to the compiler.
+  for (let priority = 0; priority < TIME_PATTERNS.length; priority += 1) {
+    const { regex, toMinutes } = TIME_PATTERNS[priority];
     const match = text.match(regex);
-    if (!match) {
+    if (!match || match.index === undefined) {
       continue;
     }
     const minutes = toMinutes(match);
-    if (Number.isFinite(minutes) && minutes >= 0 && minutes < MINUTES_PER_DAY) {
-      return { minutes, matchedText: match[0] };
+    if (!Number.isFinite(minutes) || minutes < 0 || minutes >= MINUTES_PER_DAY) {
+      continue;
+    }
+    if (!best || match.index < best.index || (match.index === best.index && priority < best.priority)) {
+      best = { index: match.index, priority, minutes, matchedText: match[0] };
     }
   }
-  return null;
+
+  if (!best) {
+    return null;
+  }
+  return { minutes: best.minutes, matchedText: best.matchedText };
+}
+
+/** A range separator directly between two times, e.g. the "-" in "8:30-9:00" (after normalization). */
+const RANGE_SEPARATOR = /^\s*-\s*/;
+
+/**
+ * Pure parser for Japanese/English clock-time expressions, including a start-end range
+ * ("8:30〜9:00", "9時〜12時半", "9:00-12:30"). No side effects, no i18n framework.
+ * Normalizes full-width input internally, so callers may pass raw pasted text as-is.
+ */
+export function parseTimeExpression(text: string): ParsedTimeExpression | null {
+  const normalized = normalizeTimeText(text);
+  const start = matchSingleTime(normalized);
+  if (!start) {
+    return null;
+  }
+
+  const startIndex = normalized.indexOf(start.matchedText);
+  const afterStart = normalized.slice(startIndex + start.matchedText.length);
+  const separatorMatch = afterStart.match(RANGE_SEPARATOR);
+  if (separatorMatch) {
+    const remainder = afterStart.slice(separatorMatch[0].length);
+    const end = matchSingleTime(remainder);
+    // The end time must sit immediately after the separator — otherwise this "-" isn't
+    // introducing a time range at all (e.g. unrelated text between two clock mentions).
+    if (end && remainder.indexOf(end.matchedText) === 0) {
+      const matchedText = normalized.slice(
+        startIndex,
+        startIndex + start.matchedText.length + separatorMatch[0].length + end.matchedText.length
+      );
+      return { minutes: start.minutes, endMinutes: end.minutes, matchedText };
+    }
+  }
+
+  return { minutes: start.minutes, matchedText: start.matchedText };
 }
 
 const FIXED_EVENT_TRAILING_PATTERNS = [
@@ -229,33 +304,65 @@ function extractFixedEventTitle(message: string, matchedTimeText: string): strin
   return withoutTrailers.replace(/[、。！!?？]+$/, '').trim();
 }
 
-/**
- * Detects an explicit-time scheduling request ("22時に寝る予定を立てて") and turns it into a
- * CalendarBlock proposal — never a Task, per design principle 1 (Task has no way to pin a clock time).
- * Gated on FIXED_EVENT_HINTS so an incidental time mention in unrelated chat doesn't misfire.
- */
-export function extractFixedEvents(message: string): CoachProposedFixedEvent[] {
-  if (!FIXED_EVENT_HINTS.test(message)) {
-    return [];
+function extractFixedEventFromLine(
+  rawLine: string,
+  options: { requireHint: boolean }
+): CoachProposedFixedEvent | null {
+  const normalized = normalizeTimeText(rawLine);
+
+  if (options.requireHint && !FIXED_EVENT_HINTS.test(normalized)) {
+    return null;
   }
 
-  const parsed = parseTimeExpression(message);
+  const parsed = parseTimeExpression(normalized);
   if (!parsed) {
-    return [];
+    return null;
   }
 
-  const title = extractFixedEventTitle(message, parsed.matchedText);
+  const title = extractFixedEventTitle(normalized, parsed.matchedText);
   if (!title) {
-    return [];
+    return null;
   }
 
   const startMinutes = parsed.minutes;
-  const endMinutes = Math.min(MINUTES_PER_DAY, startMinutes + DEFAULT_FIXED_EVENT_MINUTES);
+  const endMinutes =
+    parsed.endMinutes !== undefined
+      ? Math.min(MINUTES_PER_DAY, parsed.endMinutes)
+      : Math.min(MINUTES_PER_DAY, startMinutes + DEFAULT_FIXED_EVENT_MINUTES);
+
   if (endMinutes <= startMinutes) {
-    return [];
+    return null;
   }
 
-  return [{ title, startMinutes, endMinutes }];
+  return { title, startMinutes, endMinutes };
+}
+
+/**
+ * Detects explicit-time scheduling requests and turns them into CalendarBlock proposals —
+ * never Tasks, per design principle 1 (Task has no way to pin a clock time).
+ *
+ * Two modes:
+ * - Single line/message ("22時に寝る予定を立てて"): gated on FIXED_EVENT_HINTS so an
+ *   incidental time mention in unrelated chat doesn't misfire.
+ * - Multi-line paste (a whole day's plan, one item per line): the hint gate is dropped
+ *   per line — pasting "朝ご飯 8:30〜9:00" line by line *is* the request, it never says
+ *   "予定に登録して" anywhere. Each line that parses to a time becomes one event; lines
+ *   without a parseable time (headers, blank lines) are silently skipped.
+ */
+export function extractFixedEvents(message: string): CoachProposedFixedEvent[] {
+  const lines = message
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (lines.length > 1) {
+    return lines
+      .map((line) => extractFixedEventFromLine(line, { requireHint: false }))
+      .filter((event): event is CoachProposedFixedEvent => event !== null);
+  }
+
+  const single = extractFixedEventFromLine(message, { requireHint: true });
+  return single ? [single] : [];
 }
 
 export function extractGoalTopic(message: string): string {
@@ -398,9 +505,12 @@ export function detectLocalConsultIntent(message: string): CoachConsultStructure
 
   const fixedEvents = extractFixedEvents(text);
   if (fixedEvents.length > 0) {
-    const [event] = fixedEvents;
+    const reply =
+      fixedEvents.length === 1
+        ? `了解です。「${fixedEvents[0].title}」を${formatTime(fixedEvents[0].startMinutes, true)}から今日の予定に固定で入れます。`
+        : `了解です。${fixedEvents.length}件を今日の予定に固定で入れます。`;
     return {
-      reply: `了解です。「${event.title}」を${formatTime(event.startMinutes, true)}から今日の予定に固定で入れます。`,
+      reply,
       intent: 'register_fixed_event',
       proposedTasks: [],
       proposedFixedEvents: fixedEvents,
