@@ -5,6 +5,66 @@
 
 ---
 
+## 2026-10-06
+
+### 「予定が確認なしに勝手に動く」ことをやめた（作者自身が数日で離脱した根本原因への対応・第1弾）
+
+claude.ai（Chat）側で原因を特定し、方針決定済みのプロンプトを受け取って着手。9月に1週間使った作者自身が数日で離脱した実績（タイマー開始 0/23、学習が成立した日 0/4）の原因は、Today を開いただけで予定が自動生成され、入りきらない分は確認なしに明日へ繰り越され、既存の低優先度予定も確認なしに押し出されていたこと。事後に1行の通知が出るだけで、ユーザーは「なぜ勝手に動いたか」を後から知るしかなかった。
+
+**方針:** 「予定が崩れたときに選択肢を出し、ユーザーが選んで確定する」形に寄せる。第1弾として、アプリが確認なしに予定を動かすのをやめる。
+
+### 変更点
+
+1. **Today を開いただけでは予定を作らない。**（`App.tsx`, `TodayView.tsx`）
+   - `autoPlanDateRef` の自動effectから `needsGenerate` 分岐（`plannerGateway.generateDayPlan()` の自動呼び出し）を削除。`needsSnapshot`（スナップショットを撮るだけで配置はしない）は残した
+   - 旧 `needsGenerate` と同じ条件（今日に `isMutableScheduleSession` なセッションが無く、配置候補がある）のとき、`TodayView` に**「今日の予定を立てる」ボタン**を表示（無効化されていた「{APP_NAME}に入る」の位置を置き換え）。元々あった `onGenerate` prop は宣言されているだけで未配線だったので、ここで初めて実際に繋いだ
+   - オンボーディングと空状態の文言から「自動で組み立てます」を削除し、「『今日の予定を立てる』を押すと…組み立てます」に修正（`OnboardingModal.tsx` 含む）
+
+2. **押し出しをやめた。**（`placementRollover.ts`）
+   - `runPlacementWithRollover()` から、`findLowerPriorityTaskIdsToBump()` で今日の既存予定を明日へ移すブロックを削除
+   - **`findLowerPriorityTaskIdsToBump()` と `buildBumpedTodayRescheduleBatch()` は削除せず、`export` して残した。** 次の段階（「優先度の低い予定を外して入れる」を提案として出し、確定時に適用する機能）でそのまま再利用する想定。削除して後で同じロジックを書き直すのは無駄なので、使われなくなった時点のコードをそのまま次のフックとして温存する判断
+
+3. **繰り越しを「提案」にした。**（`placementRollover.ts`, `CalendarPlannerAdapter.ts`, `useDayOrchestrator.ts`）
+   - `PlanApplyOutcome` を作り直した: `rolledTomorrowTitles` / `bumpedTomorrowTitles` / `stillUnplacedTitles` を廃止し、`pendingRollover: { taskId, title }[]` と `fromDateKey` に一本化。2ファイル（`CalendarPlannerAdapter.ts` / `placementRollover.ts`）に同じ形で定義されているため両方そろえた
+   - `runPlacementWithRollover()` は対象日に入りきらなかったタスクを翌日へ配置しなくなった。ただ `pendingRollover` として返すだけ
+   - 確認後に翌日へ配置する処理を `runRolloverConfirm()`（`placementRollover.ts`、純粋寄りのロジック）＋ `confirmRollover`（`useDayOrchestrator.ts` の `useCallback`、`PlannerGateway` の新メソッド）に分離して新設。中身は旧繰り越しのロジックを流用: 翌日に generateDayPlan → applyDayPlan、2026-07-06 の回帰保証（`stillUnplacedOnTomorrow` の検証）を踏襲、`finalizeCarryOverFromPast` を使って翌日に入ったタスクの過去日の未完了セッションを `rescheduled` にする、最後に `syncPlannerSnapshot`
+   - **保留は永続化しない。** 理由: `resolveMorningReplanTaskIds()` が配置候補を常に含む（2026-07-06 の修正）ため、保留タスクは次に予定を立てたとき（ボタンを押す・AIコーチに頼む等）に自動的に候補へ戻ってくる。永続化しなくても「失われない」が成立しているので、保留専用のストレージ・画面を増やして複雑さを足す理由が無かった（ユーザー指示の「やらないこと」とも一致）
+
+4. **通知に操作ボタンを付けた。**（`DayTaskList.tsx`, `today/TodayView.tsx`, `App.tsx`, `CalendarView.tsx`, `coachApply.ts`, `CoachModal.tsx`）
+   - `ScheduleNotice` に `action?: { label, onPress, busy? }` を追加。**通知本体の dismiss 領域とボタンを兄弟要素にして、ボタンをネストしなかった。** React Native Web はクリックを DOM イベントとして bubbling させるため、ボタンを dismiss 用 `TouchableOpacity` の中に入れると、web 環境ではボタン押下が親の dismiss にそのまま伝播してしまう（ネイティブの Responder System なら問題にならないが、Web はそうならない）。構造を兄弟にすることで stopPropagation 無しに確実に防いだ。実機能確認でボタン押下時に通知が先に消えないことを確認済み
+   - ボタンのラベルは `resolveRolloverButtonLabel()` が対象日が今日なら「明日に回す」、それ以外なら「翌日（M/D）に回す」を返す
+   - 表示元3箇所: (a) Today の「今日の予定を立てる」、(b) `CalendarView.tsx` の `handleAiGenerate`（`bedtimeHint` があっても保留のタスク名とボタンが消えないよう、通知テキストと `action` を分離して両方渡すように修正）、(c) AIコーチ経由（`CoachModal` の `onScheduleApplied` を `() => void` から `(info: { pendingRollover, fromDateKey }) => void` に変更し、`applied` だけでなく `pendingRollover.length > 0` の `skipped_empty` でも呼ぶようにした。コーチ自身は Today からしか開かないため、ボタンは Today の通知側に出す設計）
+   - **`Alert.alert` は使わなかった。** react-native-web では `Alert.alert` が no-op（何も表示しない）実装で、このアプリの主な利用環境である iPhone の Web版では確認ダイアログが一切出ない。通知＋インラインボタンなら全プラットフォームで同じ見た目・挙動になる
+
+5. **未来日に予定済みのタスクをボタン経由の候補・保留から除外。**（`placementTaskSelector.ts`, `useDayOrchestrator.ts`）
+   - `selectTasksForPlacement()` は他日の**完了済み**セッションしか差し引かない設計（意図的、過去日の未完了を繰り越すための仕様）。そのままだと「今日の予定を立てる」ボタンが、明日以降に既に予定済みのタスクも今日の候補に含めてしまい、同じタスクの重複セッションができてしまう
+   - 新規 `excludeTaskIdsWithFutureSessions()`（`hasFutureMutableSession()` ベース）を追加し、`useDayOrchestrator.ts` の `resolveReplanTaskIds()` の**暗黙解決パス（taskIds を明示的に渡さない経路＝ボタン経由のみ）**と、`App.tsx` の `morningReplanTaskCount`（ボタンの表示判定）の両方から同じ関数を呼ぶようにした。AIコーチ・AIスケジュール作成はどちらも taskIds を明示的に渡す経路なので対象外（`resolveMorningReplanTaskIds` 自体や `selectTasksForPlacement` は変更していない）
+
+6. **CLAUDE.md** の設計原則2に、Session の日またぎ移動（繰り越し・押し出し）はユーザー確認を経る旨を追記。ベースライン行も本日の実測値に更新
+
+### テスト
+
+- `placementRollover.test.ts` を全面的に書き直した。削除: 押し出し・自動繰り越し前提の `reschedules the bumped task's stale session...` / `does not call saveSessions when nothing needs to be bumped` / 旧 `buildRolloverNotice` の2件。移植: `does not claim "rolled to tomorrow" when tomorrow is also full`（2026-07-06 の回帰保証）は確認後の経路 `runRolloverConfirm` のテストとして存続。維持: `findLowerPriorityTaskIdsToBump` の純関数テスト・pull-forward reconciliation 系は無変更
+- 新規: `runPlacementWithRollover` が押し出し・自動繰り越しをしないこと（`generateDayPlan`/`applyDayPlan` が対象日について1回だけ呼ばれる）、入りきらない分が `pendingRollover` で返りセッションが作られないこと、保留タスクが `resolveMorningReplanTaskIds` の結果に戻ること（失われない保証）。`runRolloverConfirm` が翌日に配置すること、翌日も満杯なら保留のまま（2026-07-06 regression のまま維持）。`buildRolloverNotice` / `buildRolloverConfirmNotice` / `resolveRolloverButtonLabel` の文言
+- 新規: `placementTaskSelector.test.ts` に `excludeTaskIdsWithFutureSessions` / `hasFutureMutableSession`（未来日・当日/過去日・完了済み/キャンセル済みの扱いを個別に検証）
+- 検証: `npx tsc --noEmit` 0エラー / `npm test` **39スイート・307件**全成功（+14件）/ `npm run lint` 0エラー・**10警告**（`CalendarView.tsx` の `today` 未メモ化による既存の `exhaustive-deps` 警告が、`handleAiGenerate` の依存配列修正の副作用で解消し、11→10に減った）
+
+### Web版での実機能確認（完了条件の(a)(b)(c)）
+
+localStorage を直接操作してテストデータを用意した上で確認（`navigate` で同一URLへ再遷移してもアプリがメモリ上の状態をデバウンス書き込みで上書きし直すため、クエリ文字列を変えた強制リロードでないと注入したデータが反映されない点に注意——次回同様のことをする際のためにここに残す）。
+
+- **(a) 確認済み:** 過去日（10/5）に未完了タスクがある状態を localStorage に直接投入して Today（10/6）を開いたところ、セッションは一切作られず「今日のプラン」に「『今日の予定を立てる』を押すと…組み立てます」の案内と**「今日の予定を立てる」ボタン**のみが表示された。ボタンを押すと「未完了だった予定（テスト繰り越しタスク）を今日に繰り越しました。」の通知とともに今日にセッションが作成され、10/5側のセッションは `status: 'rescheduled'` に変わっていることを localStorage の中身で確認した
+- **(b) 確認済み:** AIコーチで計45分×8本（4+4）の予定が入っている状態で、追加のタスク（巨大タスクC、実際の見積りは90分）を登録 → 今日の既存8セッションは一切変更されず、Today の通知に「空き時間に入りきらなかった予定があります（巨大タスクC）。」と**「明日に回す」ボタン**が表示された。ボタンを押すと「明日に回しました（巨大タスクC）。」に通知が更新され、カレンダーの翌日（10/7）に45分×2（分割）のセッションが実際に作成されていることを確認した
+- **(c) 確認済み:** (b) で「明日に回す」を押した直後、通知が消えずに「明日に回しました」の文言に更新された（dismiss が先に走っていれば通知ごと消えていたはず）
+- **未確認:** AIコーチ以外の経路（`CalendarView.tsx` の「AIでスケジュール作成」モーダル経由、`bedtimeHint` が同時に出るケース）でのボタン表示は、コードレビューとユニットテストでのみ検証し、ブラウザでは試していない。ネイティブ（Android/iOS）実機でのボタンのタップ挙動・ヘッドレス dismiss-bubbling の有無も未確認（Web版の react-native-web 特有の懸念だったため、ネイティブでは元々問題にならない可能性が高いが未検証のまま）
+
+### 次回への申し送り
+1. **次の段階**（ユーザー指示の「次の段階」に明記済み）: 選択肢を「結果」で並べるUIと、押し出しを提案として出すUI（`findLowerPriorityTaskIdsToBump`/`buildBumpedTodayRescheduleBatch` を再利用）
+2. `CalendarView.tsx` の「AIでスケジュール作成」経由・ネイティブ実機でのロールオーバーボタンの動作は未確認のまま。次にAndroidエミュレータ等で実機確認する際に合わせて見ておくこと
+3. lint残り10警告（`no-unused-vars` 9件・`no-empty-object-type` 1件）・`taskProposal/` 未着手・`BETA_FORCE_PRO_PLAN` は引き続き持ち越し
+
+---
+
 ## 2026-09-09
 
 ### 「1日分の一括貼り付け」がタスク化されて時刻が無視される不具合を修正

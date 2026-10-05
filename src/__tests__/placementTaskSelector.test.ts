@@ -1,7 +1,9 @@
 import {
+  excludeTaskIdsWithFutureSessions,
   getActiveSessionTaskIdsForDate,
   getAnchorSessionsForReplan,
   getRemainingMinutesForPlacement,
+  hasFutureMutableSession,
   selectTasksForPlacement,
 } from '../intelligence/planner/placementTaskSelector';
 import { makeSession, makeTask } from './fixtures';
@@ -67,5 +69,37 @@ describe('remaining minutes', () => {
 
     const selected = selectTasksForPlacement(tasks, [], DATE);
     expect(selected.map((t) => t.id)).toEqual(['ok']);
+  });
+});
+
+describe('excludeTaskIdsWithFutureSessions', () => {
+  // selectTasksForPlacement only nets out *completed* sessions on other dates
+  // (see "does not subtract incomplete sessions on past dates" above, which is
+  // deliberate — that's how carry-over works). So on its own it would let a task
+  // already scheduled for tomorrow also get a second, duplicate session placed
+  // today. This filter is the other half: it only looks forward, for an existing
+  // mutable (not done/cancelled/rescheduled) session strictly after `dateKey`.
+  it('excludes a task that already has a mutable session on a later date', () => {
+    const sessions = [makeSession({ taskId: 'future', date: '2026-06-29', status: 'planned' })];
+    expect(hasFutureMutableSession('future', DATE, sessions)).toBe(true);
+    expect(excludeTaskIdsWithFutureSessions(['future', 'other'], DATE, sessions)).toEqual(['other']);
+  });
+
+  it('does not exclude a task whose only future session is completed/cancelled/rescheduled', () => {
+    const sessions = [
+      makeSession({ taskId: 'done-tomorrow', date: '2026-06-29', status: 'completed', completed: true }),
+      makeSession({ taskId: 'cancelled-tomorrow', date: '2026-06-29', status: 'cancelled' }),
+      makeSession({ taskId: 'rescheduled-tomorrow', date: '2026-06-29', status: 'rescheduled' }),
+    ];
+    const ids = ['done-tomorrow', 'cancelled-tomorrow', 'rescheduled-tomorrow'];
+    expect(excludeTaskIdsWithFutureSessions(ids, DATE, sessions)).toEqual(ids);
+  });
+
+  it('does not exclude a task whose mutable session is on the target date itself or in the past', () => {
+    const sessions = [
+      makeSession({ taskId: 'today', date: DATE, status: 'planned' }),
+      makeSession({ taskId: 'past', date: '2026-06-27', status: 'planned' }),
+    ];
+    expect(excludeTaskIdsWithFutureSessions(['today', 'past'], DATE, sessions)).toEqual(['today', 'past']);
   });
 });

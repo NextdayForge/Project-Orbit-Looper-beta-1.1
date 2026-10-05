@@ -21,7 +21,7 @@ const SLIDES: OnboardingSlide[] = [
   {
     glyph: '◎',
     title: 'Today が毎朝のホーム',
-    body: `タスクを入れて Today を開くと、${APP_NAME} が今日の流れを自動で組み立てます。`,
+    body: `タスクを入れて Today を開き、「今日の予定を立てる」を押すと、${APP_NAME} が今日の流れを組み立てます。`,
   },
   {
     glyph: '◉',

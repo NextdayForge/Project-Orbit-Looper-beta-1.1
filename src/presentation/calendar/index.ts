@@ -22,6 +22,7 @@ export type {
   GenerateDayPlanOptions,
   ApplyDayPlanResult,
   PlanApplyOutcome,
+  PendingRolloverTask,
 } from './CalendarPlannerAdapter';
 
 export { runAiDayPlan, runForceReschedule, runShiftFromNow } from './CalendarPlannerAdapter';
@@ -31,7 +32,14 @@ export type { ResolveAiTaskInputsResult } from './resolveAiTasks';
 
 export { syncTasksAfterDayPlan } from './syncTasksAfterDayPlan';
 
-export { buildRolloverNotice, runPlacementWithRollover, getUnplacedTaskIds } from './placementRollover';
+export {
+  buildRolloverNotice,
+  buildRolloverConfirmNotice,
+  resolveRolloverButtonLabel,
+  runPlacementWithRollover,
+  runRolloverConfirm,
+  getUnplacedTaskIds,
+} from './placementRollover';
 
 export { resolveBedtimeHint } from './bedtimeHint';
 

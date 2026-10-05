@@ -136,6 +136,10 @@ export function TodayView({
   const isPreparing = isBriefLoading || isPlannerRunning;
 
   const canJump = !isPreparing && nextSession != null && !allDone;
+  // Mirrors the old "needsGenerate" auto-effect condition (today has no mutable
+  // session yet, but there's something placable) — now shown as a button instead
+  // of firing on its own just from opening Today. See SESSION_LOG 2026-10-06.
+  const showGenerateButton = !canShiftFromNow && hasPlacableTasks;
 
   const titleFor = (session: Session) =>
     (session.taskId && titleById.get(session.taskId)) || 'セッション';
@@ -219,26 +223,41 @@ export function TodayView({
                   <Text style={styles.dayBriefType}>今日のプラン</Text>
                   <Text style={styles.briefReason} numberOfLines={2}>
                     {hasPlacableTasks
-                      ? 'タスクから最適な一日を自動で組み立てます。'
-                      : 'タスクを登録すると、一日を自動で組み立てます。'}
+                      ? '「今日の予定を立てる」を押すと、タスクから一日を組み立てます。'
+                      : 'タスクを登録すると、「今日の予定を立てる」で一日を組み立てられます。'}
                   </Text>
                 </View>
               )
             )}
 
             {!allDone && (
-              <TouchableOpacity
-                style={[styles.orbitBtn, !canJump && styles.orbitBtnDisabled]}
-                onPress={onJumpIntoLooper}
-                activeOpacity={0.85}
-                disabled={!canJump}
-              >
-                {isPreparing ? (
-                  <ActivityIndicator color={theme.onAccent} />
-                ) : (
-                  <Text style={styles.looperText}>{APP_NAME}に入る</Text>
-                )}
-              </TouchableOpacity>
+              showGenerateButton ? (
+                <TouchableOpacity
+                  style={[styles.orbitBtn, isPreparing && styles.orbitBtnDisabled]}
+                  onPress={onGenerate}
+                  activeOpacity={0.85}
+                  disabled={isPreparing}
+                >
+                  {isPreparing ? (
+                    <ActivityIndicator color={theme.onAccent} />
+                  ) : (
+                    <Text style={styles.looperText}>今日の予定を立てる</Text>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.orbitBtn, !canJump && styles.orbitBtnDisabled]}
+                  onPress={onJumpIntoLooper}
+                  activeOpacity={0.85}
+                  disabled={!canJump}
+                >
+                  {isPreparing ? (
+                    <ActivityIndicator color={theme.onAccent} />
+                  ) : (
+                    <Text style={styles.looperText}>{APP_NAME}に入る</Text>
+                  )}
+                </TouchableOpacity>
+              )
             )}
 
             <TouchableOpacity
@@ -257,26 +276,40 @@ export function TodayView({
       </View>
 
       {planNotice && onDismissPlanNotice ? (
-        <TouchableOpacity
+        <View
           style={[
             styles.planNotice,
             planNotice.tone === 'warning' && styles.planNoticeWarning,
             planNotice.tone === 'info' && styles.planNoticeInfo,
             planNotice.tone === 'success' && styles.planNoticeSuccess,
           ]}
-          onPress={onDismissPlanNotice}
-          activeOpacity={0.85}
         >
-          <Text
-            style={[
-              styles.planNoticeText,
-              planNotice.tone === 'warning' && styles.planNoticeTextWarning,
-              planNotice.tone === 'info' && styles.planNoticeTextInfo,
-            ]}
-          >
-            {planNotice.text}
-          </Text>
-        </TouchableOpacity>
+          <TouchableOpacity onPress={onDismissPlanNotice} activeOpacity={0.85}>
+            <Text
+              style={[
+                styles.planNoticeText,
+                planNotice.tone === 'warning' && styles.planNoticeTextWarning,
+                planNotice.tone === 'info' && styles.planNoticeTextInfo,
+              ]}
+            >
+              {planNotice.text}
+            </Text>
+          </TouchableOpacity>
+          {planNotice.action ? (
+            <TouchableOpacity
+              style={[styles.planNoticeActionBtn, planNotice.action.busy && styles.planNoticeActionBtnBusy]}
+              onPress={planNotice.action.onPress}
+              disabled={planNotice.action.busy}
+              activeOpacity={0.85}
+            >
+              {planNotice.action.busy ? (
+                <ActivityIndicator size="small" color={theme.accent} />
+              ) : (
+                <Text style={styles.planNoticeActionBtnText}>{planNotice.action.label}</Text>
+              )}
+            </TouchableOpacity>
+          ) : null}
+        </View>
       ) : null}
 
       {scheduleNeedsReplan && (
@@ -495,6 +528,18 @@ const makeStyles = (theme: Theme) =>
     planNoticeText: { fontSize: 13, lineHeight: 20, fontWeight: '600', color: theme.text },
     planNoticeTextWarning: { color: theme.eventColors.red.text },
     planNoticeTextInfo: { color: theme.eventColors.orange.text },
+    planNoticeActionBtn: {
+      marginTop: 10,
+      alignSelf: 'flex-start',
+      backgroundColor: theme.elevated,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: theme.accent,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+    },
+    planNoticeActionBtnBusy: { opacity: 0.7 },
+    planNoticeActionBtnText: { fontSize: 13, fontWeight: '700', color: theme.accent },
 
     learningCard: {
       backgroundColor: theme.elevated,

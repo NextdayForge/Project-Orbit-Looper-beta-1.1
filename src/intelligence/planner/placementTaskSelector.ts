@@ -1,4 +1,9 @@
-import { Session, isActivePlacementSession, isSessionCompleted } from '../../types/session';
+import {
+  Session,
+  isActivePlacementSession,
+  isMutableScheduleSession,
+  isSessionCompleted,
+} from '../../types/session';
 import { Task } from '../../types/task';
 
 const EXCLUDED_STATUSES = new Set<Task['status']>(['done', 'cancelled']);
@@ -87,4 +92,32 @@ export function getRemainingMinutesForPlacement(
   sessions: Session[]
 ): number {
   return remainingMinutesForTask(task, date, sessions);
+}
+
+/**
+ * True when the task already has a mutable (not completed/cancelled/rescheduled)
+ * session strictly after `dateKey`. Used to keep a task that's already homed on a
+ * later day from also being placed on `dateKey` — without this, a task scheduled
+ * for tomorrow (or later) could get a *second*, duplicate session placed today.
+ */
+export function hasFutureMutableSession(
+  taskId: string,
+  dateKey: string,
+  sessions: Session[]
+): boolean {
+  return sessions.some(
+    (session) =>
+      session.taskId === taskId &&
+      session.date > dateKey &&
+      isMutableScheduleSession(session)
+  );
+}
+
+/** Filters out task IDs that already have a mutable session on a later date (see `hasFutureMutableSession`). */
+export function excludeTaskIdsWithFutureSessions(
+  taskIds: string[],
+  dateKey: string,
+  sessions: Session[]
+): string[] {
+  return taskIds.filter((taskId) => !hasFutureMutableSession(taskId, dateKey, sessions));
 }

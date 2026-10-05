@@ -21,10 +21,16 @@ import {
   CoachReplySource,
   CoachScheduleAction,
 } from '../../intelligence/coach/types';
+import { PendingRolloverTask } from '../../presentation/calendar/CalendarPlannerAdapter';
 import { BottomSheetDragHandle } from '../common/BottomSheetDragHandle';
 import { modalAnimation } from '../common/modalAnimation';
 import { useBottomSheetDismiss } from '../common/useBottomSheetDismiss';
 import { Theme, useTheme, useThemedStyles } from '../../theme';
+
+export interface CoachScheduleAppliedInfo {
+  pendingRollover: PendingRolloverTask[];
+  fromDateKey: string;
+}
 
 interface CoachModalProps {
   isOpen: boolean;
@@ -33,7 +39,7 @@ interface CoachModalProps {
   scheduleDeps: ApplyCoachScheduleDeps;
   settings: AppSettings | null;
   onClose: () => void;
-  onScheduleApplied?: () => void;
+  onScheduleApplied?: (info: CoachScheduleAppliedInfo) => void;
 }
 
 interface ChatMessage {
@@ -113,8 +119,11 @@ export function CoachModal({
       const result = await applyScheduleAction(action);
       setPendingAction(null);
       appendAssistant(result.message, undefined, 'local');
-      if (result.result === 'applied') {
-        onScheduleApplied?.();
+      if (result.result === 'applied' || result.pendingRollover.length > 0) {
+        onScheduleApplied?.({
+          pendingRollover: result.pendingRollover,
+          fromDateKey: result.fromDateKey,
+        });
       }
     } catch {
       appendAssistant('予定への組み込みに失敗しました。もう一度お試しください。', undefined, 'local');

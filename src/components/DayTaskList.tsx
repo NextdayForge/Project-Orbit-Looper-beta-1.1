@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { AppSettings, PRIORITY_SHORT } from '../types/schedule';
 import { CalendarDisplayEvent } from '../presentation/calendar/CalendarDisplayEvent';
@@ -33,9 +33,22 @@ interface DayTaskListProps {
 
 export type ScheduleNoticeTone = 'info' | 'success' | 'warning' | 'error';
 
+export interface ScheduleNoticeAction {
+  label: string;
+  onPress: () => void;
+  /** While true, the button shows a spinner and ignores presses (no double-submit). */
+  busy?: boolean;
+}
+
 export interface ScheduleNotice {
   text: string;
   tone: ScheduleNoticeTone;
+  /**
+   * Optional action (e.g. "明日に回す"). Rendered as a sibling button, never nested
+   * inside the dismiss-on-tap area — on web, a nested Touchable's press still bubbles
+   * to the parent's onPress, which would dismiss the notice before the action ran.
+   */
+  action?: ScheduleNoticeAction;
 }
 
 
@@ -252,6 +265,8 @@ export function DayTaskList({
 
 }: DayTaskListProps) {
 
+  const theme = useTheme();
+
   const styles = useThemedStyles(makeStyles);
 
   const { use24Hour } = settings;
@@ -363,7 +378,7 @@ export function DayTaskList({
 
 
       {notice ? (
-        <TouchableOpacity
+        <View
           style={[
             styles.notice,
             notice.tone === 'warning' && styles.noticeWarning,
@@ -371,27 +386,41 @@ export function DayTaskList({
             notice.tone === 'success' && styles.noticeSuccess,
             notice.tone === 'info' && styles.noticeInfo,
           ]}
-          onPress={onDismissNotice}
-          activeOpacity={0.85}
         >
-          {(notice.tone === 'warning' || notice.tone === 'error') && (
-            <Text style={[styles.noticeKicker, styles.noticeKickerWarning]}>⚠ 予定未配置</Text>
-          )}
-          <Text
-            style={[
-              styles.noticeText,
-              notice.tone === 'warning' && styles.noticeTextWarning,
-              notice.tone === 'error' && styles.noticeTextError,
-              notice.tone === 'success' && styles.noticeTextSuccess,
-              notice.tone === 'info' && styles.noticeTextInfo,
-            ]}
-          >
-            {notice.text}
-          </Text>
-          {(notice.tone === 'warning' || notice.tone === 'error') && (
-            <Text style={styles.noticeDismissHint}>タップで閉じる</Text>
-          )}
-        </TouchableOpacity>
+          <TouchableOpacity onPress={onDismissNotice} activeOpacity={0.85}>
+            {(notice.tone === 'warning' || notice.tone === 'error') && (
+              <Text style={[styles.noticeKicker, styles.noticeKickerWarning]}>⚠ 予定未配置</Text>
+            )}
+            <Text
+              style={[
+                styles.noticeText,
+                notice.tone === 'warning' && styles.noticeTextWarning,
+                notice.tone === 'error' && styles.noticeTextError,
+                notice.tone === 'success' && styles.noticeTextSuccess,
+                notice.tone === 'info' && styles.noticeTextInfo,
+              ]}
+            >
+              {notice.text}
+            </Text>
+            {(notice.tone === 'warning' || notice.tone === 'error') && (
+              <Text style={styles.noticeDismissHint}>タップで閉じる</Text>
+            )}
+          </TouchableOpacity>
+          {notice.action ? (
+            <TouchableOpacity
+              style={[styles.noticeActionBtn, notice.action.busy && styles.noticeActionBtnBusy]}
+              onPress={notice.action.onPress}
+              disabled={notice.action.busy}
+              activeOpacity={0.85}
+            >
+              {notice.action.busy ? (
+                <ActivityIndicator size="small" color={theme.accent} />
+              ) : (
+                <Text style={styles.noticeActionBtnText}>{notice.action.label}</Text>
+              )}
+            </TouchableOpacity>
+          ) : null}
+        </View>
       ) : null}
 
       <View style={styles.progressTrack}>
@@ -561,6 +590,18 @@ const makeStyles = (theme: Theme) =>
     opacity: 0.75,
     marginTop: 6,
   },
+  noticeActionBtn: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    backgroundColor: theme.elevated,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.accent,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  noticeActionBtnBusy: { opacity: 0.7 },
+  noticeActionBtnText: { fontSize: 13, fontWeight: '700', color: theme.accent },
 
   headerTitle: { fontSize: 20, fontWeight: '700', color: theme.text },
 

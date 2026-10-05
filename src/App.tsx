@@ -52,15 +52,20 @@ import {
 
 } from './presentation/calendar';
 
-import { toDateKey, getMonthGrid } from './utils/time';
+import { toDateKey, parseDateKey, getMonthGrid } from './utils/time';
 
 import { expandRoutinesForDates } from './intelligence/planner/routineExpansion';
 
 import { resolveMorningReplanTaskIds } from './intelligence/planner/morningTaskSelector';
+import { excludeTaskIdsWithFutureSessions } from './intelligence/planner/placementTaskSelector';
 
 import { reasonTagsToSentences } from './presentation/explain/reasonLabels';
-import { buildRolloverNotice } from './presentation/calendar/placementRollover';
-import { PlanApplyOutcome } from './presentation/calendar/CalendarPlannerAdapter';
+import {
+  buildRolloverConfirmNotice,
+  buildRolloverNotice,
+  resolveRolloverButtonLabel,
+} from './presentation/calendar/placementRollover';
+import { PendingRolloverTask } from './presentation/calendar/CalendarPlannerAdapter';
 import { useSessionNotifications } from './hooks/useSessionNotifications';
 import { useWakeNotification } from './hooks/useWakeNotification';
 import { DEFAULT_SETTINGS } from './types/schedule';
@@ -368,7 +373,12 @@ function AppContent() {
   );
 
   const morningReplanTaskCount = useMemo(
-    () => resolveMorningReplanTaskIds(tasks, sessions, todayKey).length,
+    () =>
+      excludeTaskIdsWithFutureSessions(
+        resolveMorningReplanTaskIds(tasks, sessions, todayKey),
+        todayKey,
+        sessions
+      ).length,
     [tasks, sessions, todayKey]
   );
 
@@ -441,9 +451,13 @@ function AppContent() {
     const hasTodaySessions = todaySessions.some(isMutableScheduleSession);
     const hasTodayPlan = currentDayPlan?.date === todayKey;
     const needsSnapshot = hasTodaySessions && !hasTodayPlan;
-    const needsGenerate = !hasTodaySessions && morningReplanTaskCount > 0;
 
-    if (!needsSnapshot && !needsGenerate) {
+    // Opening Today no longer generates a plan on its own — only takes a read-only
+    // snapshot of whatever sessions already exist. Building today's plan from
+    // scratch now requires the user to press "今日の予定を立てる" (handleGenerateToday):
+    // see SESSION_LOG 2026-10-06 for why (plans changing on open, with no confirmation,
+    // was the single biggest source of distrust).
+    if (!needsSnapshot) {
       return;
     }
 
@@ -451,36 +465,10 @@ function AppContent() {
     autoPlanInFlightRef.current = true;
     setIsBriefLoading(true);
 
-    const run = needsGenerate
-      ? plannerGateway.generateDayPlan(new Date())
-      : ensureDayPlanSnapshot(todayKey);
-
-    void Promise.resolve(run)
-      .then((result) => {
-        if (!needsGenerate || !result || typeof result !== 'object' || !('result' in result)) {
-          return;
-        }
-        const outcome = result as PlanApplyOutcome;
-        if (outcome.result === 'skipped_empty') {
-          const stuckTitles = outcome.stillUnplacedTitles;
-          setTodayPlanNotice({
-            tone: 'warning',
-            text:
-              stuckTitles.length > 0
-                ? `スケジュールを配置する場所がありませんでした。タスクは登録済みです（${stuckTitles.join('、')}）。所要時間を短くするか、別の日を指定してください。`
-                : 'スケジュールを配置する場所がありませんでした。タスクは登録済みですが、今日の予定には入っていません。',
-          });
-          return;
-        }
-        const rollover = buildRolloverNotice(outcome);
-        if (rollover) {
-          setTodayPlanNotice({ tone: 'info', text: rollover });
-        }
-      })
-      .finally(() => {
-        autoPlanInFlightRef.current = false;
-        setIsBriefLoading(false);
-      });
+    void ensureDayPlanSnapshot(todayKey).finally(() => {
+      autoPlanInFlightRef.current = false;
+      setIsBriefLoading(false);
+    });
   }, [
     ui.activeTab,
     ready,
@@ -488,10 +476,79 @@ function AppContent() {
     todayKey,
     todaySessions,
     currentDayPlan,
-    morningReplanTaskCount,
-    plannerGateway,
     ensureDayPlanSnapshot,
   ]);
+
+  const rolloverBusyRef = useRef(false);
+  const [rolloverBusy, setRolloverBusy] = useState(false);
+
+  const handleConfirmRollover = useCallback(
+    async (fromDateKey: string, pending: PendingRolloverTask[]) => {
+      if (rolloverBusyRef.current) {
+        return;
+      }
+      rolloverBusyRef.current = true;
+      setRolloverBusy(true);
+      try {
+        const outcome = await plannerGateway.confirmRollover(
+          parseDateKey(fromDateKey),
+          pending.map((task) => task.taskId)
+        );
+        setTodayPlanNotice({
+          tone: outcome.pendingRollover.length > 0 ? 'warning' : 'success',
+          text: buildRolloverConfirmNotice(pending, outcome),
+        });
+      } finally {
+        rolloverBusyRef.current = false;
+        setRolloverBusy(false);
+      }
+    },
+    [plannerGateway]
+  );
+
+  const buildPendingRolloverAction = useCallback(
+    (pending: PendingRolloverTask[], fromDateKey: string): ScheduleNotice['action'] => {
+      if (pending.length === 0) {
+        return undefined;
+      }
+      return {
+        label: resolveRolloverButtonLabel(fromDateKey, todayKey),
+        busy: rolloverBusy,
+        onPress: () => {
+          void handleConfirmRollover(fromDateKey, pending);
+        },
+      };
+    },
+    [handleConfirmRollover, rolloverBusy, todayKey]
+  );
+
+  const handleGenerateToday = useCallback(async () => {
+    if (autoPlanInFlightRef.current) {
+      return;
+    }
+    autoPlanDateRef.current = todayKey;
+    autoPlanInFlightRef.current = true;
+    setIsBriefLoading(true);
+    try {
+      const outcome = await plannerGateway.generateDayPlan(new Date());
+      const rollover = buildRolloverNotice(outcome);
+      if (rollover) {
+        setTodayPlanNotice({
+          tone: outcome.result === 'skipped_empty' || outcome.pendingRollover.length > 0 ? 'warning' : 'info',
+          text: rollover,
+          action: buildPendingRolloverAction(outcome.pendingRollover, outcome.fromDateKey),
+        });
+      } else if (outcome.result === 'skipped_empty') {
+        setTodayPlanNotice({
+          tone: 'warning',
+          text: 'スケジュールを配置する場所がありませんでした。タスクは登録済みですが、今日の予定には入っていません。',
+        });
+      }
+    } finally {
+      autoPlanInFlightRef.current = false;
+      setIsBriefLoading(false);
+    }
+  }, [buildPendingRolloverAction, plannerGateway, todayKey]);
 
   const beginFocusSession = useCallback(async () => {
     if (
@@ -659,7 +716,7 @@ function AppContent() {
               void handleJumpIntoLooper();
             }}
             onGenerate={() => {
-              void plannerGateway.generateDayPlan(new Date());
+              void handleGenerateToday();
             }}
             onShiftFromNow={() => {
               void openReplanProposal();
@@ -774,8 +831,21 @@ function AppContent() {
         tasks={tasks}
         scheduleDeps={coachScheduleDeps}
         settings={ui.settings}
-        onScheduleApplied={() => {
+        onScheduleApplied={(info) => {
           void reloadFromRepository();
+          if (info.pendingRollover.length > 0) {
+            setTodayPlanNotice({
+              tone: 'warning',
+              text:
+                buildRolloverNotice({
+                  result: 'applied',
+                  carriedFromPastTitles: [],
+                  pendingRollover: info.pendingRollover,
+                  fromDateKey: info.fromDateKey,
+                }) ?? '空き時間に入りきらなかった予定があります。',
+              action: buildPendingRolloverAction(info.pendingRollover, info.fromDateKey),
+            });
+          }
         }}
         onClose={ui.closeCoachModal}
       />

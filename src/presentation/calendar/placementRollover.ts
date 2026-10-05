@@ -2,7 +2,7 @@ import { getRemainingMinutesForPlacement } from '../../intelligence/planner/plac
 import { DayPlan } from '../../types/dayPlan';
 import { Session, isActivePlacementSession, isMutableScheduleSession } from '../../types/session';
 import { Task } from '../../types/task';
-import { addDays, toDateKey } from '../../utils/time';
+import { addDays, parseDateKey, toDateKey } from '../../utils/time';
 
 export type ApplyDayPlanResult = 'applied' | 'skipped_empty';
 
@@ -12,20 +12,27 @@ export interface ApplyDayPlanOptions {
   replaceOnlyWhenPlaced?: boolean;
 }
 
+export interface PendingRolloverTask {
+  taskId: string;
+  title: string;
+}
+
 export interface PlanApplyOutcome {
   result: ApplyDayPlanResult;
-  rolledTomorrowTitles: string[];
-  bumpedTomorrowTitles: string[];
   carriedFromPastTitles: string[];
   /**
-   * Tasks that could not be placed today OR tomorrow (tomorrow was also full).
-   * These are NOT included in rolledTomorrowTitles — claiming a roll succeeded
-   * when it didn't would silently orphan the task: it ends up with no session
-   * on any date, and since there is no all-tasks/backlog view in this app, it
-   * becomes invisible until the user happens to re-open AI schedule creation
-   * and notices it missing.
+   * Tasks that did not fit on `fromDateKey` and have NOT been moved anywhere —
+   * the app no longer rolls these to tomorrow on its own (design principle 2:
+   * moving a Session to a different day changes "what day this happens on",
+   * which needs the user's confirmation, same as bumping an existing one does).
+   * Surfaced in a notice with an explicit "roll to tomorrow" action
+   * (`PlannerGateway.confirmRollover`); dismissing the notice leaves them pending
+   * — not lost, since `resolveMorningReplanTaskIds` always includes placable
+   * tasks, so they're offered again next time a plan is generated.
    */
-  stillUnplacedTitles: string[];
+  pendingRollover: PendingRolloverTask[];
+  /** The date `pendingRollover` is pending from (empty string when pendingRollover is empty). */
+  fromDateKey: string;
 }
 
 export function getUnplacedTaskIds(
@@ -111,18 +118,17 @@ export function findLowerPriorityTaskIdsToBump(
   return selected;
 }
 
-function titlesFor(taskIds: string[], tasks: Task[]): string[] {
-  return taskIds
-    .map((id) => tasks.find((task) => task.id === id)?.title)
-    .filter((title): title is string => Boolean(title));
-}
-
 /**
  * Sessions on `dateKey` for the bumped tasks — must be marked rescheduled so they don't
  * linger alongside the new session just added on tomorrow's plan (Session history rule:
  * never delete, mark rescheduled instead — see session.ts isActivePlacementSession()).
+ *
+ * Not currently called from `runPlacementWithRollover` (bumping today's existing
+ * plan without confirmation was removed — design principle 2). Kept, and exported,
+ * for the next step: offering "free up time by moving these lower-priority items
+ * to tomorrow" as a user-confirmed proposal, which will reuse this batch builder.
  */
-function buildBumpedTodayRescheduleBatch(
+export function buildBumpedTodayRescheduleBatch(
   sessions: Session[],
   dateKey: string,
   taskIds: string[],
@@ -248,29 +254,85 @@ export function buildFutureSessionFreeBatch(
   }));
 }
 
+const MAX_TITLES_SHOWN = 3;
+
+function formatTitleList(titles: string[]): string {
+  if (titles.length <= MAX_TITLES_SHOWN) {
+    return titles.join('、');
+  }
+  const shown = titles.slice(0, MAX_TITLES_SHOWN);
+  return `${shown.join('、')}、ほか${titles.length - MAX_TITLES_SHOWN}件`;
+}
+
+/**
+ * Notice shown right after generating/updating a plan. Only reports what actually
+ * happened automatically (today's carry-over from past incomplete sessions) and
+ * what's left pending (didn't fit `fromDateKey`, not moved anywhere yet) — never
+ * claims a rollover happened, since none does without the user confirming it via
+ * the notice's action button (see `resolveRolloverButtonLabel` / `PlannerGateway.confirmRollover`).
+ */
 export function buildRolloverNotice(outcome: PlanApplyOutcome): string | null {
   const parts: string[] = [];
 
-  if (outcome.bumpedTomorrowTitles.length > 0) {
-    parts.push(
-      `優先度の低い予定（${outcome.bumpedTomorrowTitles.join('、')}）を明日に移しました`
-    );
-  }
-  if (outcome.rolledTomorrowTitles.length > 0) {
-    parts.push(`配置できなかった予定（${outcome.rolledTomorrowTitles.join('、')}）を明日に繰り越しました`);
-  }
   if (outcome.carriedFromPastTitles.length > 0) {
     parts.push(
-      `未完了だった予定（${outcome.carriedFromPastTitles.join('、')}）を今日に繰り越しました`
+      `未完了だった予定（${formatTitleList(outcome.carriedFromPastTitles)}）を今日に繰り越しました`
     );
   }
-  if (outcome.stillUnplacedTitles.length > 0) {
+  if (outcome.pendingRollover.length > 0) {
     parts.push(
-      `空き時間が見つからず保留にした予定（${outcome.stillUnplacedTitles.join('、')}）があります。所要時間を短くするか、別の日を指定してください`
+      `空き時間に入りきらなかった予定があります（${formatTitleList(
+        outcome.pendingRollover.map((task) => task.title)
+      )}）`
     );
   }
 
   return parts.length > 0 ? `${parts.join('。')}。` : null;
+}
+
+/** Label for the notice's rollover action button — "明日に回す" for today, "翌日（M/D）に回す" otherwise. */
+export function resolveRolloverButtonLabel(fromDateKey: string, todayDateKey: string): string {
+  if (fromDateKey === todayDateKey) {
+    return '明日に回す';
+  }
+  const target = addDays(parseDateKey(fromDateKey), 1);
+  return `翌日（${target.getMonth() + 1}/${target.getDate()}）に回す`;
+}
+
+/**
+ * Notice shown after the user presses the rollover action button. Compares what was
+ * requested against what's still pending in the confirm outcome: anything no longer
+ * pending made it onto tomorrow; anything still pending didn't fit there either
+ * (tomorrow was also full) and stays pending — offered again next time.
+ */
+export function buildRolloverConfirmNotice(
+  requested: PendingRolloverTask[],
+  outcome: PlanApplyOutcome
+): string {
+  const stillPendingIds = new Set(outcome.pendingRollover.map((task) => task.taskId));
+  const rolledTitles = requested
+    .filter((task) => !stillPendingIds.has(task.taskId))
+    .map((task) => task.title);
+
+  const parts: string[] = [];
+  if (rolledTitles.length > 0) {
+    parts.push(`明日に回しました（${formatTitleList(rolledTitles)}）`);
+  }
+  if (outcome.pendingRollover.length > 0) {
+    parts.push(
+      `明日も空きがなく保留のままの予定があります（${formatTitleList(
+        outcome.pendingRollover.map((task) => task.title)
+      )}）`
+    );
+  }
+
+  return parts.length > 0 ? `${parts.join('。')}。` : '予定を更新しました。';
+}
+
+function toPendingRolloverTasks(taskIds: string[], tasks: Task[]): PendingRolloverTask[] {
+  return taskIds
+    .map((taskId) => ({ taskId, title: tasks.find((task) => task.id === taskId)?.title ?? '' }))
+    .filter((task): task is PendingRolloverTask => task.title.length > 0);
 }
 
 interface PlacementRolloverDeps {
@@ -281,68 +343,24 @@ interface PlacementRolloverDeps {
   isToday: boolean;
   generateDayPlan: (date: Date, taskIds: string[]) => Promise<DayPlan>;
   applyDayPlan: (plan: DayPlan, options: ApplyDayPlanOptions) => Promise<ApplyDayPlanResult>;
-  reload: () => Promise<{ tasks: Task[]; sessions: Session[] }>;
-  saveSessions: (sessions: Session[]) => Promise<unknown>;
 }
 
+/**
+ * Places `taskIds` on `targetDate` only — never touches today's existing plan to make
+ * room (no bumping) and never auto-moves what didn't fit to tomorrow (no auto-roll).
+ * Both of those are now user-confirmed actions: bumping is deferred to a future
+ * "free up time" proposal (see `findLowerPriorityTaskIdsToBump` / `buildBumpedTodayRescheduleBatch`),
+ * and rolling over is `PlannerGateway.confirmRollover`, surfaced via this outcome's
+ * `pendingRollover` and a notice action button (`resolveRolloverButtonLabel`).
+ */
 export async function runPlacementWithRollover(
   deps: PlacementRolloverDeps
 ): Promise<PlanApplyOutcome> {
-  const { targetDate, taskIds, isToday, generateDayPlan, applyDayPlan, reload, saveSessions } = deps;
-  let { tasks, sessions } = deps;
+  const { targetDate, taskIds, tasks, sessions, isToday, generateDayPlan, applyDayPlan } = deps;
 
   const dateKey = toDateKey(targetDate);
-  const tomorrow = addDays(targetDate, 1);
 
-  const bumpedTomorrowTitles: string[] = [];
-  const rolledTomorrowTitles: string[] = [];
-
-  let plan = await generateDayPlan(targetDate, taskIds);
-  let unplaced = getUnplacedTaskIds(plan, taskIds, tasks, sessions);
-
-  if (unplaced.length > 0) {
-    const urgentPriority = Math.min(
-      ...unplaced.map((id) => tasks.find((task) => task.id === id)?.priority ?? 5)
-    );
-    const neededMinutes = unplaced.reduce((sum, id) => {
-      const task = tasks.find((item) => item.id === id);
-      if (!task) {
-        return sum;
-      }
-      const remaining = getRemainingMinutesForPlacement(task, dateKey, sessions);
-      const placedMinutes = plan.sessions
-        .filter((session) => session.taskId === id)
-        .reduce((placedSum, session) => placedSum + (session.endMinutes - session.startMinutes), 0);
-      return sum + Math.max(0, remaining - placedMinutes);
-    }, 0);
-    const toBump = findLowerPriorityTaskIdsToBump(dateKey, sessions, tasks, urgentPriority, neededMinutes);
-
-    if (toBump.length > 0) {
-      const bumpPlan = await generateDayPlan(tomorrow, toBump);
-      await applyDayPlan(bumpPlan, {
-        mode: 'replaceTaskSessions',
-        taskIds: toBump,
-      });
-      bumpedTomorrowTitles.push(...titlesFor(toBump, tasks));
-
-      // Without this, the bumped tasks' original sessions stay active on `dateKey`,
-      // duplicating them alongside the new tomorrow session and keeping their old
-      // slot "anchored" (occupied) when today's plan is regenerated below.
-      const staleTodaySessions = buildBumpedTodayRescheduleBatch(
-        sessions,
-        dateKey,
-        toBump,
-        new Date().toISOString()
-      );
-      if (staleTodaySessions.length > 0) {
-        await saveSessions(staleTodaySessions);
-      }
-
-      ({ tasks, sessions } = await reload());
-      plan = await generateDayPlan(targetDate, taskIds);
-      unplaced = getUnplacedTaskIds(plan, taskIds, tasks, sessions);
-    }
-  }
+  const plan = await generateDayPlan(targetDate, taskIds);
 
   await applyDayPlan(plan, {
     mode: 'replaceTaskSessions',
@@ -350,49 +368,49 @@ export async function runPlacementWithRollover(
     ...(isToday ? { replaceOnlyWhenPlaced: false } : {}),
   });
 
-  unplaced = getUnplacedTaskIds(plan, taskIds, tasks, sessions);
-
-  const stillUnplacedTitles: string[] = [];
-
-  if (unplaced.length > 0) {
-    const tomorrowPlan = await generateDayPlan(tomorrow, unplaced);
-    await applyDayPlan(tomorrowPlan, {
-      mode: 'replaceTaskSessions',
-      taskIds: unplaced,
-    });
-
-    // Tomorrow can also be full. Verify each task actually got a session there
-    // before reporting it as "rolled to tomorrow" — claiming success for a task
-    // that landed nowhere would leave it invisible (no session on any date, and
-    // this app has no all-tasks/backlog view to fall back on).
-    const stillUnplacedOnTomorrow = new Set(
-      getUnplacedTaskIds(tomorrowPlan, unplaced, tasks, sessions)
-    );
-    const actuallyRolled = unplaced.filter((id) => !stillUnplacedOnTomorrow.has(id));
-
-    rolledTomorrowTitles.push(...titlesFor(actuallyRolled, tasks));
-    stillUnplacedTitles.push(...titlesFor([...stillUnplacedOnTomorrow], tasks));
-  }
-
-  if (
-    plan.sessions.length > 0 ||
-    rolledTomorrowTitles.length > 0 ||
-    bumpedTomorrowTitles.length > 0
-  ) {
-    return {
-      result: 'applied',
-      rolledTomorrowTitles,
-      bumpedTomorrowTitles,
-      carriedFromPastTitles: [],
-      stillUnplacedTitles,
-    };
-  }
+  const unplaced = getUnplacedTaskIds(plan, taskIds, tasks, sessions);
+  const pendingRollover = toPendingRolloverTasks(unplaced, tasks);
 
   return {
-    result: 'skipped_empty',
-    rolledTomorrowTitles,
-    bumpedTomorrowTitles,
+    result: plan.sessions.length > 0 ? 'applied' : 'skipped_empty',
     carriedFromPastTitles: [],
-    stillUnplacedTitles,
+    pendingRollover,
+    fromDateKey: pendingRollover.length > 0 ? dateKey : '',
+  };
+}
+
+interface RolloverConfirmDeps {
+  fromDateKey: string;
+  taskIds: string[];
+  tasks: Task[];
+  sessions: Session[];
+  generateDayPlan: (date: Date, taskIds: string[]) => Promise<DayPlan>;
+  applyDayPlan: (plan: DayPlan, options: ApplyDayPlanOptions) => Promise<ApplyDayPlanResult>;
+}
+
+/**
+ * The user-confirmed half of rollover: places `taskIds` (from `runPlacementWithRollover`'s
+ * `pendingRollover`) on the day after `fromDateKey`. Carries forward the 2026-07-06
+ * regression guard — tomorrow can also be full, so each task's new session is verified
+ * before it's dropped from the still-pending list; a task that doesn't fit there either
+ * stays in `pendingRollover` (now dated tomorrow) rather than being silently lost.
+ */
+export async function runRolloverConfirm(deps: RolloverConfirmDeps): Promise<PlanApplyOutcome> {
+  const { fromDateKey, taskIds, tasks, sessions, generateDayPlan, applyDayPlan } = deps;
+
+  const tomorrow = addDays(parseDateKey(fromDateKey), 1);
+  const tomorrowKey = toDateKey(tomorrow);
+
+  const plan = await generateDayPlan(tomorrow, taskIds);
+  await applyDayPlan(plan, { mode: 'replaceTaskSessions', taskIds });
+
+  const stillUnplaced = getUnplacedTaskIds(plan, taskIds, tasks, sessions);
+  const pendingRollover = toPendingRolloverTasks(stillUnplaced, tasks);
+
+  return {
+    result: plan.sessions.length > 0 ? 'applied' : 'skipped_empty',
+    carriedFromPastTitles: [],
+    pendingRollover,
+    fromDateKey: pendingRollover.length > 0 ? tomorrowKey : '',
   };
 }

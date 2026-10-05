@@ -5,12 +5,18 @@
 
 export type ApplyDayPlanResult = 'applied' | 'skipped_empty';
 
+export interface PendingRolloverTask {
+  taskId: string;
+  title: string;
+}
+
 export interface PlanApplyOutcome {
   result: ApplyDayPlanResult;
-  rolledTomorrowTitles: string[];
-  bumpedTomorrowTitles: string[];
   carriedFromPastTitles: string[];
-  stillUnplacedTitles: string[];
+  /** Tasks that didn't fit `fromDateKey` and have not been moved anywhere — see placementRollover.ts. */
+  pendingRollover: PendingRolloverTask[];
+  /** The date `pendingRollover` is pending from (empty string when pendingRollover is empty). */
+  fromDateKey: string;
 }
 
 export interface GenerateDayPlanOptions {
@@ -20,6 +26,8 @@ export interface GenerateDayPlanOptions {
 export interface PlannerGateway {
   generateDayPlan(date?: Date, options?: GenerateDayPlanOptions): Promise<PlanApplyOutcome>;
   runMiddayAdjustment(date?: Date): Promise<PlanApplyOutcome>;
+  /** User-confirmed: places `taskIds` (a prior outcome's `pendingRollover`) on the day after `fromDate`. */
+  confirmRollover(fromDate: Date, taskIds: string[]): Promise<PlanApplyOutcome>;
 }
 
 export async function runForceReschedule(

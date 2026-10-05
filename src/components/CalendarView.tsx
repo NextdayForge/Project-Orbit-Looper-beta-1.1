@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MonthGrid } from './MonthGrid';
 import { DayTimeline } from './DayTimeline';
@@ -15,11 +15,14 @@ import {
   createEntityFromInput,
   createNewEditableDraft,
   EditableCalendarEvent,
+  PendingRolloverTask,
   PlannerGateway,
   runAiDayPlan,
   resolveAiTaskInputs,
+  buildRolloverConfirmNotice,
   buildRolloverNotice,
   resolveBedtimeHint,
+  resolveRolloverButtonLabel,
   toEditableModel,
   toggleCompleted,
 } from '../presentation/calendar';
@@ -86,7 +89,7 @@ export function CalendarView(props: CalendarViewProps) {
   const [adjustOpen, setAdjustOpen] = useState(false);
 
   const isDayView = calendarMode === 'day';
-  const today = new Date();
+  const today = useMemo(() => new Date(), []);
   const monthEventCounts = displayEventCountByDate;
 
   const canShiftFromNow = useMemo(() => {
@@ -216,6 +219,49 @@ export function CalendarView(props: CalendarViewProps) {
     setAdjustOpen(false);
   }, [isAiGenerating]);
 
+  const [rolloverBusy, setRolloverBusy] = useState(false);
+  const rolloverBusyRef = useRef(false);
+
+  const handleConfirmRollover = useCallback(
+    async (fromDateKey: string, pending: PendingRolloverTask[]) => {
+      if (rolloverBusyRef.current) {
+        return;
+      }
+      rolloverBusyRef.current = true;
+      setRolloverBusy(true);
+      try {
+        const outcome = await plannerGateway.confirmRollover(
+          parseDateKey(fromDateKey),
+          pending.map((task) => task.taskId)
+        );
+        setScheduleNotice({
+          tone: outcome.pendingRollover.length > 0 ? 'warning' : 'success',
+          text: buildRolloverConfirmNotice(pending, outcome),
+        });
+      } finally {
+        rolloverBusyRef.current = false;
+        setRolloverBusy(false);
+      }
+    },
+    [plannerGateway]
+  );
+
+  const buildPendingRolloverAction = useCallback(
+    (pending: PendingRolloverTask[], fromDateKey: string): ScheduleNotice['action'] => {
+      if (pending.length === 0) {
+        return undefined;
+      }
+      return {
+        label: resolveRolloverButtonLabel(fromDateKey, toDateKey(new Date())),
+        busy: rolloverBusy,
+        onPress: () => {
+          void handleConfirmRollover(fromDateKey, pending);
+        },
+      };
+    },
+    [handleConfirmRollover, rolloverBusy]
+  );
+
   const handleAiGenerate = useCallback(
     async (tasks: AiTaskInput[]) => {
       const scheduleDate = isDayView ? selectedDate : today;
@@ -237,7 +283,8 @@ export function CalendarView(props: CalendarViewProps) {
         const outcome = await runAiDayPlan(scheduleDate, plannerGateway, { taskIds });
         closeAiModal();
         const bedtimeHint = resolveBedtimeHint(settings, scheduleDate);
-        if (outcome.result === 'skipped_empty') {
+        const action = buildPendingRolloverAction(outcome.pendingRollover, outcome.fromDateKey);
+        if (outcome.result === 'skipped_empty' && outcome.pendingRollover.length === 0) {
           setScheduleNotice({
             tone: 'warning',
             text:
@@ -250,10 +297,11 @@ export function CalendarView(props: CalendarViewProps) {
         } else {
           const rollover = buildRolloverNotice(outcome);
           setScheduleNotice({
-            tone: rollover ? 'info' : 'success',
+            tone: outcome.pendingRollover.length > 0 ? 'warning' : rollover ? 'info' : 'success',
             text: rollover
               ? `${bedtimeHint ?? rollover} Today タブで今日の流れを確認できます。`
               : 'スケジュールを生成しました。Today タブで今日の流れを確認できます。',
+            action,
           });
           if (!isDayView && rollover) {
             openDayView(scheduleDate);
@@ -267,14 +315,14 @@ export function CalendarView(props: CalendarViewProps) {
       }
     },
     [
+      buildPendingRolloverAction,
       closeAiModal,
       editorGateway,
       isDayView,
       openDayView,
       plannerGateway,
       selectedDate,
-      settings.defaultDurationMinutes,
-      settings.sleepMinutes,
+      settings,
       today,
     ]
   );

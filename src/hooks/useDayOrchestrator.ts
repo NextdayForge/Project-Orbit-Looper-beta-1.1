@@ -8,8 +8,10 @@ import {
 import {
   buildFutureSessionFreeBatch,
   runPlacementWithRollover,
+  runRolloverConfirm,
 } from '../presentation/calendar/placementRollover';
 import { resolveMorningReplanTaskIds } from '../intelligence/planner/morningTaskSelector';
+import { excludeTaskIdsWithFutureSessions } from '../intelligence/planner/placementTaskSelector';
 import {
   buildPastIncompleteRescheduleBatch,
   getIncompleteTaskIdsBeforeDate,
@@ -17,7 +19,7 @@ import {
   titlesForTaskIds,
 } from '../intelligence/planner/taskCarryOver';
 import { sessionRepository, taskRepository } from '../repositories';
-import { toDateKey } from '../utils/time';
+import { addDays, toDateKey } from '../utils/time';
 import { SaveReflectionInput, useScheduleActions } from './useScheduleActions';
 import { useDayPlan } from './useDayPlan';
 import { useLearning } from './useLearning';
@@ -39,7 +41,12 @@ async function resolveReplanTaskIds(
     taskRepository.getAll(),
   ]);
 
-  return resolveMorningReplanTaskIds(tasks, sessions, dateKey);
+  const candidateIds = resolveMorningReplanTaskIds(tasks, sessions, dateKey);
+  // Implicit resolution only (the "今日の予定を立てる" button, not an explicit task
+  // list from the AI coach or AI schedule modal): selectTasksForPlacement only nets
+  // out *completed* sessions on other dates, so a task already placed on a *future*
+  // day would otherwise get a second, duplicate session placed on `dateKey` too.
+  return excludeTaskIdsWithFutureSessions(candidateIds, dateKey, sessions);
 }
 
 async function finalizeCarryOverFromPast(
@@ -121,10 +128,9 @@ export function useDayOrchestrator() {
         if (taskIds.length === 0) {
           return {
             result: 'skipped_empty',
-            rolledTomorrowTitles: [],
-            bumpedTomorrowTitles: [],
             carriedFromPastTitles: [],
-            stillUnplacedTitles: [],
+            pendingRollover: [],
+            fromDateKey: '',
           };
         }
 
@@ -139,8 +145,6 @@ export function useDayOrchestrator() {
           isToday,
           generateDayPlan,
           applyDayPlan,
-          reload: load,
-          saveSessions: sessionRepository.saveMany,
         });
 
         if (outcome.result === 'applied') {
@@ -153,6 +157,61 @@ export function useDayOrchestrator() {
           return { ...outcome, carriedFromPastTitles };
         }
         return { ...outcome, carriedFromPastTitles: [] };
+      } finally {
+        setIsPlannerRunning(false);
+      }
+    },
+    [applyDayPlan, generateDayPlan, reloadFromRepository, syncPlannerSnapshot]
+  );
+
+  /**
+   * User-confirmed rollover: places `taskIds` (a prior outcome's `pendingRollover`,
+   * pending since `fromDate`) on the following day. Reuses the same carry-over-from-past
+   * cleanup as the morning plan (step c in SESSION_LOG 2026-10-06): a task that lands on
+   * tomorrow but still has a stale incomplete session on some earlier day must have that
+   * past session marked rescheduled too, or it lingers as a duplicate.
+   */
+  const confirmRollover = useCallback(
+    async (fromDate: Date, taskIds: string[]): Promise<PlanApplyOutcome> => {
+      setIsPlannerRunning(true);
+      try {
+        const fromDateKey = toDateKey(fromDate);
+        const tomorrow = addDays(fromDate, 1);
+        const tomorrowKey = toDateKey(tomorrow);
+
+        const load = async () => {
+          await reloadFromRepository();
+          const [tasks, sessions] = await Promise.all([
+            taskRepository.getAll(),
+            sessionRepository.getAll(),
+          ]);
+          return { tasks, sessions };
+        };
+
+        await reloadFromRepository();
+        const { tasks, sessions } = await load();
+
+        const outcome = await runRolloverConfirm({
+          fromDateKey,
+          taskIds,
+          tasks,
+          sessions,
+          generateDayPlan,
+          applyDayPlan,
+        });
+
+        if (outcome.result === 'applied') {
+          const carryOverTaskIds = getIncompleteTaskIdsBeforeDate(sessions, tomorrowKey);
+          const carriedFromPastTitles = await finalizeCarryOverFromPast(
+            tomorrowKey,
+            carryOverTaskIds,
+            load
+          );
+          await syncPlannerSnapshot(fromDate);
+          return { ...outcome, carriedFromPastTitles };
+        }
+        await reloadFromRepository();
+        return outcome;
       } finally {
         setIsPlannerRunning(false);
       }
@@ -173,10 +232,9 @@ export function useDayOrchestrator() {
         if (!adjusted) {
           return {
             result: 'skipped_empty',
-            rolledTomorrowTitles: [],
-            bumpedTomorrowTitles: [],
             carriedFromPastTitles: [],
-            stillUnplacedTitles: [],
+            pendingRollover: [],
+            fromDateKey: '',
           };
         }
 
@@ -195,10 +253,9 @@ export function useDayOrchestrator() {
         }
         return {
           result,
-          rolledTomorrowTitles: [],
-          bumpedTomorrowTitles: [],
           carriedFromPastTitles: [],
-          stillUnplacedTitles: [],
+          pendingRollover: [],
+          fromDateKey: '',
         };
       } finally {
         setIsPlannerRunning(false);
@@ -355,8 +412,9 @@ export function useDayOrchestrator() {
     () => ({
       generateDayPlan: generateDayPlanAndApply,
       runMiddayAdjustment: runMiddayAdjustmentAndApply,
+      confirmRollover,
     }),
-    [generateDayPlanAndApply, runMiddayAdjustmentAndApply]
+    [confirmRollover, generateDayPlanAndApply, runMiddayAdjustmentAndApply]
   );
 
   return {

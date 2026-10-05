@@ -1,5 +1,10 @@
 import { CalendarEditorGateway } from '../../presentation/calendar/CalendarEditorAdapter';
-import { PlannerGateway, ApplyDayPlanResult , runAiDayPlan } from '../../presentation/calendar/CalendarPlannerAdapter';
+import {
+  PlannerGateway,
+  ApplyDayPlanResult,
+  PendingRolloverTask,
+  runAiDayPlan,
+} from '../../presentation/calendar/CalendarPlannerAdapter';
 import { buildRolloverNotice } from '../../presentation/calendar/placementRollover';
 import { resolveAiTaskInputs } from '../../presentation/calendar/resolveAiTasks';
 import { sessionRepository, taskRepository } from '../../repositories';
@@ -11,6 +16,10 @@ export interface ApplyCoachScheduleResult {
   result: ApplyDayPlanResult;
   message: string;
   taskTitles: string[];
+  /** Tasks that didn't fit today and haven't been moved anywhere — see placementRollover.ts. */
+  pendingRollover: PendingRolloverTask[];
+  /** The date `pendingRollover` is pending from (empty string when pendingRollover is empty). */
+  fromDateKey: string;
 }
 
 export interface ApplyCoachScheduleOptions {
@@ -43,6 +52,8 @@ async function applyFixedEventsAction(
       result: 'skipped_empty',
       message: '固定予定を作成できませんでした。時刻ともう一度教えてください。',
       taskTitles: eventTitles,
+      pendingRollover: [],
+      fromDateKey: '',
     };
   }
 
@@ -62,6 +73,8 @@ async function applyFixedEventsAction(
     result: 'applied',
     message: `今日の予定に固定で入れました。対象: ${eventTitles.join('、')}`,
     taskTitles: eventTitles,
+    pendingRollover: [],
+    fromDateKey: '',
   };
 }
 
@@ -97,6 +110,8 @@ async function applyTasksAction(
       result: 'skipped_empty',
       message: 'タスクを作成できませんでした。もう一度内容を教えてください。',
       taskTitles,
+      pendingRollover: [],
+      fromDateKey: '',
     };
   }
 
@@ -106,15 +121,27 @@ async function applyTasksAction(
 
   if (outcome.result === 'skipped_empty') {
     const createdNote = created > 0 ? `${created}件のタスクは追加済みです。` : '';
+    // Today's attempt is the only placement try now — rollover to tomorrow is a
+    // separate, user-confirmed step (see Today's notice action), not something
+    // already attempted here.
+    const pendingNote =
+      outcome.pendingRollover.length > 0
+        ? '入りきらなかった予定があります。Today の通知から明日に回せます。'
+        : '今日配置できる時間がありませんでした。';
     return {
       result: outcome.result,
-      message: `タスクは登録しましたが、今日も明日も配置できる時間がありませんでした。${createdNote}`,
+      message: `タスクは登録しました。${pendingNote}${createdNote}`,
       taskTitles,
+      pendingRollover: outcome.pendingRollover,
+      fromDateKey: outcome.fromDateKey,
     };
   }
 
   const rollover = buildRolloverNotice(outcome);
   const parts: string[] = [rollover ?? '今日の予定に組み込みました。'];
+  if (outcome.pendingRollover.length > 0) {
+    parts.push('Today の通知から明日に回せます。');
+  }
   if (created > 0) {
     parts.push(`新規${created}件`);
   }
@@ -127,5 +154,7 @@ async function applyTasksAction(
     result: outcome.result,
     message: parts.join(' '),
     taskTitles,
+    pendingRollover: outcome.pendingRollover,
+    fromDateKey: outcome.fromDateKey,
   };
 }

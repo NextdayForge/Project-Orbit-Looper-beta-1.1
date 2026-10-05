@@ -17,6 +17,7 @@ Expo / React Native (SDK 54, React 19) 製。AI は Gemini（Cloudflare Worker �
 
 1. **Task と Session は分離する。** Task =「やること」（不変）。Session =「いつやるか」（毎日変わる）。
 2. **AI は Session を変える。Task は勝手に変えない。** ユーザーの意図を失わないため。
+   ただし Session であっても、**別の日へ移す（繰り越し・押し出し）など「この日にやる」という意図そのものを変える移動は、ユーザーの確認を経てから行う。** 確認なしに動くのは同日内の配置・調整まで（2026-10-06、押し出し廃止・繰り越しの確認制化で明文化。詳細は [`placementRollover.ts`](src/presentation/calendar/placementRollover.ts)）。
 3. **すべての学習は UserModel に集約する。** Planner は UserModel だけを見る。Raw データを直接読まない。
    `Session → Outcome → Reflection → DailyFeatures → UserModel → 翌日のPlan`
 4. **Explainable AI。** すべての AI 判断に理由（reasonTags）を持たせる。ユーザーは「なぜこの予定か」を常に確認できる。
@@ -45,7 +46,7 @@ DayType は 4 種のみ: `REST / LIGHT / NORMAL / PUSH`（SPRINT は未実装）
 | Worker型チェック | `cd workers/looper-gemini-proxy && npx tsc --noEmit`（要 `npm install`） |
 | Android プレビュービルド | `npm run build:android:preview` |
 
-現状のベースライン（2026-09-07 実測）: 型チェック0エラー / テスト**36スイート・235件**全て成功 / lint 0エラー・**11警告**（`no-unused-vars` 9件・`no-empty-object-type` 1件・`CalendarView.tsx` の `exhaustive-deps` 誤検知1件、いずれも未対応。`array-type`/`no-duplicates` 由来の警告はこの日の自動修正で解消済み）。
+現状のベースライン（2026-10-06 実測）: 型チェック0エラー / テスト**39スイート・307件**全て成功 / lint 0エラー・**10警告**（`no-unused-vars` 9件・`no-empty-object-type` 1件、いずれも未対応。以前あった `CalendarView.tsx` の `exhaustive-deps`（`today` 未メモ化によるもの）はこの日 `useMemo` 化で解消）。
 
 ---
 
